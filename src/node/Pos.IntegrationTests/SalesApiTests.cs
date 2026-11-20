@@ -146,6 +146,21 @@ public class SalesApiTests(DatabaseFixture db) : IAsyncLifetime
     }
 
     [DatabaseFact]
+    public async Task Half_a_kilo_is_priced_from_the_one_kilo_tier()
+    {
+        var (device, _) = await OpenShiftAsync();
+        // own product (not the seeded rice, whose opening stock another test checks): KG, decimals allowed, price from 1 kg
+        var rice = await db.CreateSellableProductAsync(14000m, name: "Beras test", unitCode: "KG", stock: [(null, 10m)]);
+
+        var (status, body) = await Sell(device, [new { ProductUnitId = rice.ProductUnitId, Qty = 0.5m }], [Pay("QRIS", 7000m)]);
+
+        Assert.Equal(HttpStatusCode.Created, status);
+        var line = body.GetProperty("sale").GetProperty("lines")[0];
+        Assert.Equal(14000m, line.Dec("unit_price"));
+        Assert.Equal(7000m, line.Dec("line_total"));
+    }
+
+    [DatabaseFact]
     public async Task Barcode_line_uses_wholesale_price_and_manual_discount()
     {
         var (device, _) = await OpenShiftAsync();

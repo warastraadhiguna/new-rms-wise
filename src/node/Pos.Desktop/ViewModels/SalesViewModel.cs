@@ -475,12 +475,19 @@ public sealed partial class SalesViewModel : ObservableObject
             return;
         }
 
+        await TryCancelCartAsync();
+        RequestFocus("search");
+    }
+
+    /// <summary>
+    /// Asks the reason and records the cart as a cart_cancellations document (F12 and Esc).
+    /// </summary>
+    /// <returns>True when the cancellation was saved and the cart emptied.</returns>
+    private async Task<bool> TryCancelCartAsync()
+    {
         var reason = _dialogs.AskCancelReason();
         if (string.IsNullOrWhiteSpace(reason))
-        {
-            RequestFocus("search");
-            return;
-        }
+            return false;
 
         var lines = _cart.Lines.Select(l => new CartCancellationLine(l.Item.ProductUnitId, l.Qty, l.Price, l.SubTotal)).ToList();
         try
@@ -488,17 +495,21 @@ public sealed partial class SalesViewModel : ObservableObject
             var result = await _api.CancelCartAsync(Guid.CreateVersion7(), reason.Trim(), _cart.Total, lines);
             ClearTransaction();
             StatusMessage = $"Transaksi dibatalkan ({result.Number}).";
+            return true;
         }
         catch (NodeApiException ex)
         {
             StatusMessage = ex.Message;
+            return false;
         }
-        RequestFocus("search");
     }
 
-    /// <summary>Esc: leave the multiplier, or close the form (confirm when the cart is not empty).</summary>
+    /// <summary>
+    /// Esc: leave the multiplier; otherwise close the form. A cart with items is cancelled first exactly like
+    /// F12 (reason required, recorded as cart_cancellations); without a saved cancellation the form stays open.
+    /// </summary>
     [RelayCommand]
-    private void Escape()
+    private async Task EscapeAsync()
     {
         if (IsMultiplierMode)
         {
@@ -507,7 +518,7 @@ public sealed partial class SalesViewModel : ObservableObject
             return;
         }
 
-        if (!_cart.IsEmpty && !_dialogs.Confirm("Keranjang belum dibayar. Tutup Form Penjualan dan kosongkan keranjang?"))
+        if (!_cart.IsEmpty && !await TryCancelCartAsync())
         {
             RequestFocus("search");
             return;

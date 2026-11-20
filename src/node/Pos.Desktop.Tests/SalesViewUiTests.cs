@@ -203,19 +203,22 @@ public class SalesViewUiTests
     });
 
     [Fact]
-    public void Escape_with_items_asks_before_closing() => WithForm((view, vm) =>
+    public void Escape_with_items_asks_a_reason_and_records_the_cancellation() => WithForm((view, vm) =>
     {
         var closed = false;
         vm.CloseRequested += (_, _) => closed = true;
+        _api.OnCancelCart = (id, reason, total, _) => new CartCancellationResult(id, "TK01-BT-202611-000005", reason, total);
         Scan(view, "13589");
 
-        _dialogs.ConfirmAnswer = false;
+        _dialogs.CancelReason = null;
         PressKey(Find<TextBox>(view, "SearchBox"), Key.Escape);
         Assert.False(closed);
+        Assert.Single(Find<DataGrid>(view, "CartGrid").Items);
 
-        _dialogs.ConfirmAnswer = true;
+        _dialogs.CancelReason = "Pelanggan pergi";
         PressKey(Find<TextBox>(view, "SearchBox"), Key.Escape);
         Assert.True(closed);
+        Assert.Contains("cancel-cart:Pelanggan pergi", _api.Calls);
     });
 
     [Fact]

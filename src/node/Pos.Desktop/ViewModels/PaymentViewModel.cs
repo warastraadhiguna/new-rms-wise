@@ -9,10 +9,11 @@ using Pos.Shared.Sales;
 namespace Pos.Desktop.ViewModels;
 
 /// <summary>
-/// F6 "Bayar", like RMS 2 BayarNotaForm: Grand Total, Cara Bayar, Diskon (%) / Potongan (Rp), Total, Bayar,
-/// Kembali, Referensi, Keterangan. Totals use the same Pos.Shared rules as the server (header discount,
-/// cash rounding only for cash). The sale id is fixed for this cart, so a retry after a network failure
-/// cannot create a second sale.
+/// F6 "Form Bayar Nota", exactly as RMS 2 (docs/rms2/form-bayar.png): Cara Bayar (TUNAI first),
+/// Total (cart, read-only), [Potongan|Diskon] + value, Grand Total (after discount; cash-rounded for
+/// TUNAI), Bayar, Kembali, Keterangan, Referensi (only DEBIT/QRIS/TRANSFER). Focus starts on Bayar.
+/// Totals and validation use the same Pos.Shared rules as the server. The sale id is fixed for this cart,
+/// so a retry after a network failure cannot create a second sale.
 /// </summary>
 public sealed partial class PaymentViewModel : DialogViewModel
 {
@@ -25,6 +26,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
     private readonly CustomerItem? _customer;
     private int _focusSequence;
     private bool _bayarEdited;
+    private bool _recalculating;
 
     public PaymentViewModel(INodeApi api, IDialogService dialogs, SalesConfig config, Cart cart, CustomerItem? customer, Guid saleId)
     {
@@ -34,24 +36,33 @@ public sealed partial class PaymentViewModel : DialogViewModel
         _cart = cart;
         _customer = customer;
         SaleId = saleId;
-        GrandTotal = cart.Total;
+        Total = cart.Total;
         _selectedMethod = config.PaymentMethods.FirstOrDefault(m => m.IsCash) ?? config.PaymentMethods.FirstOrDefault();
         Recalculate();
-        FocusRequest = new FocusRequest("method", ++_focusSequence);
+        Focus("bayar");
     }
 
     public Guid SaleId { get; }
-    public decimal GrandTotal { get; }
+
+    /// <summary>"Total": the cart before Potongan/Diskon.</summary>
+    public decimal Total { get; }
+
     public IReadOnlyList<PaymentMethodInfo> PaymentMethods => _config.PaymentMethods;
-    public IReadOnlyList<string> DiscountModes { get; } = ["Diskon (%)", "Potongan (Rp)"];
+
+    /// <summary>The small drop-down: Potongan (Rp, default) or Diskon (%).</summary>
+    public IReadOnlyList<string> DiscountModes { get; } = ["Potongan", "Diskon"];
+
     public string? CustomerName => _customer?.Display;
     public SaleResult? Result { get; private set; }
 
     [ObservableProperty] private PaymentMethodInfo? _selectedMethod;
-    [ObservableProperty] private bool _isNominalDiscount;
+    [ObservableProperty] private bool _isNominalDiscount = true;
     [ObservableProperty] private string _discountText = "0";
     [ObservableProperty] private decimal _discountAmount;
-    [ObservableProperty] private decimal _total;
+
+    /// <summary>"Grand Total": after Potongan/Diskon, cash-rounded for TUNAI.</summary>
+    [ObservableProperty] private decimal _grandTotal;
+
     [ObservableProperty] private string _bayarText = "";
     [ObservableProperty] private decimal _change;
     [ObservableProperty] private string _referenceText = "";
@@ -62,16 +73,22 @@ public sealed partial class PaymentViewModel : DialogViewModel
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private bool _isBusy;
 
-    /// <summary>Index for the "Diskon (%) / Potongan (Rp)" combo box.</summary>
+    /// <summary>Index for the drop-down: 0 = Potongan, 1 = Diskon.</summary>
     public int DiscountModeIndex
     {
-        get => IsNominalDiscount ? 1 : 0;
-        set => IsNominalDiscount = value == 1;
+        get => IsNominalDiscount ? 0 : 1;
+        set => IsNominalDiscount = value != 1;
     }
+
+    /// <summary>Referensi is used for DEBIT, QRIS and TRANSFER, not for TUNAI or KREDIT.</summary>
+    public bool IsReferenceEnabled => SelectedMethod is { IsCash: false, IsCredit: false };
 
     partial void OnSelectedMethodChanged(PaymentMethodInfo? value)
     {
         _bayarEdited = false;
+        if (!IsReferenceEnabled)
+            ReferenceText = "";
+        OnPropertyChanged(nameof(IsReferenceEnabled));
         Recalculate();
     }
 
@@ -89,8 +106,6 @@ public sealed partial class PaymentViewModel : DialogViewModel
             _bayarEdited = true;
         UpdateChange();
     }
-
-    private bool _recalculating;
 
     private bool IsCash => SelectedMethod?.IsCash == true;
 
@@ -119,7 +134,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
 
             try
             {
-                DiscountAmount = SaleCalculator.HeaderDiscountAmount(discount, GrandTotal, _config.CurrencyDecimals);
+                DiscountAmount = SaleCalculator.HeaderDiscountAmount(discount, Total, _config.CurrencyDecimals);
             }
             catch (SaleValidationException)
             {
@@ -127,12 +142,12 @@ public sealed partial class PaymentViewModel : DialogViewModel
                 DiscountAmount = 0m;
             }
 
-            var afterDiscount = GrandTotal - DiscountAmount;
-            Total = IsCash ? Rupiah.RoundCash(afterDiscount, Rounding.Step, Rounding.Mode).Total : afterDiscount;
+            var afterDiscount = Total - DiscountAmount;
+            GrandTotal = IsCash ? Rupiah.RoundCash(afterDiscount, Rounding.Step, Rounding.Mode).Total : afterDiscount;
 
-            // Non-cash pays exactly the total (RMS 2: Bayar = Total); cash is typed by the cashier.
+            // Non-cash pays exactly the grand total (RMS 2); cash is typed by the cashier.
             if (!IsCash)
-                BayarText = Format(Total);
+                BayarText = Format(GrandTotal);
             else if (!_bayarEdited)
                 BayarText = "";
         }
@@ -144,9 +159,9 @@ public sealed partial class PaymentViewModel : DialogViewModel
     }
 
     private void UpdateChange() =>
-        Change = IsCash && MoneyInput.TryParse(BayarText, out var bayar) && bayar > Total ? bayar - Total : 0m;
+        Change = IsCash && MoneyInput.TryParse(BayarText, out var bayar) && bayar > GrandTotal ? bayar - GrandTotal : 0m;
 
-    /// <summary>Enter on the last field (Keterangan) or the Simpan button.</summary>
+    /// <summary>Enter on Bayar, Keterangan or Referensi, or the Simpan button.</summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
@@ -186,7 +201,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
         }
 
         SupervisorCredentials? supervisor = null;
-        if (DiscountPolicy.RequiresApproval(DiscountAmount, GrandTotal, _config.DiscountMaxPercent, _config.CurrencyDecimals))
+        if (DiscountPolicy.RequiresApproval(DiscountAmount, Total, _config.DiscountMaxPercent, _config.CurrencyDecimals))
         {
             supervisor = _dialogs.AskSupervisor($"Diskon melebihi batas Anda (maks {_config.DiscountMaxPercent?.ToString("#,0.##", Indonesian) ?? "0"}%)");
             if (supervisor is null)
@@ -197,11 +212,12 @@ public sealed partial class PaymentViewModel : DialogViewModel
             }
         }
 
+        var reference = IsReferenceEnabled && !string.IsNullOrWhiteSpace(ReferenceText) ? ReferenceText.Trim() : null;
         var request = new CreateSaleRequest(
             SaleId,
             _customer?.Id,
             _cart.Lines.Select(l => new SaleLineRequest(l.Item.ProductUnitId, l.Qty)).ToList(),
-            payments.Length == 0 ? [] : [new SalePaymentRequest(method.Code, bayar, string.IsNullOrWhiteSpace(ReferenceText) ? null : ReferenceText.Trim())],
+            payments.Length == 0 ? [] : [new SalePaymentRequest(method.Code, bayar, reference)],
             string.IsNullOrWhiteSpace(NotesText) ? null : NotesText.Trim(),
             discount.PercentValue,
             discount.AmountValue,
@@ -216,11 +232,13 @@ public sealed partial class PaymentViewModel : DialogViewModel
         }
         catch (NodeApiException ex) when (ex.Code is "node_unreachable")
         {
-            ErrorMessage = $"{ex.Message} Tekan Simpan lagi untuk mengirim ulang nota yang sama (tidak akan tercatat dua kali).";
+            ErrorMessage = $"{ex.Message} Tekan Enter lagi untuk mengirim ulang nota yang sama (tidak akan tercatat dua kali).";
+            Focus("bayar");
         }
         catch (NodeApiException ex)
         {
             ErrorMessage = ex.Message;
+            Focus("bayar");
         }
         finally
         {

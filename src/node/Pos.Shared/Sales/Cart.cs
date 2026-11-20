@@ -125,9 +125,13 @@ public sealed class Cart
             .Select(x => new StockWarning(x.Last.ProductId, x.Last.Name, x.Last.StockBaseQty, x.InCart))
             .ToList();
 
-    /// <summary>The tier with the largest <c>MinQty &lt;= qty</c>, like the server; null below the first tier.</summary>
+    /// <summary>
+    /// The tier with the largest <c>MinQty &lt;= qty</c>, like the server; below every tier the smallest tier
+    /// (0,5 kg priced from 1 kg). Null only when there is no price at all.
+    /// </summary>
     public static decimal? PriceFor(IReadOnlyList<PriceTier> tiers, decimal qty) =>
-        tiers.Where(t => t.MinQty <= qty).OrderByDescending(t => t.MinQty).Select(t => (decimal?)t.Price).FirstOrDefault();
+        tiers.Where(t => t.MinQty <= qty).OrderByDescending(t => t.MinQty).Select(t => (decimal?)t.Price).FirstOrDefault()
+        ?? tiers.OrderBy(t => t.MinQty).Select(t => (decimal?)t.Price).FirstOrDefault();
 
     private static void Validate(CartItem item, decimal qty)
     {

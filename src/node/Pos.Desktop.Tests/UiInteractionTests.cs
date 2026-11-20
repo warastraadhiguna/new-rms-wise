@@ -204,7 +204,10 @@ public class UiInteractionTests
                 Assert.Same(Find<TextBox>(window, "OpeningCashBox"), FocusManager.GetFocusedElement(window));
 
                 var box = Find<TextBox>(window, "OpeningCashBox");
-                box.Text = "250.000";
+                box.Focus();
+                foreach (var digit in "250000")
+                    Wpf.TypeChar(box, digit.ToString());     // typed like a keyboard: dots appear while typing
+                Assert.Equal("250.000", box.Text);
                 Assert.Equal("250.000", vm.OpeningCashText);
 
                 PressEnter(box);

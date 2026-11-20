@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Pos.Desktop.Services;
@@ -9,12 +10,14 @@ using static Pos.Desktop.Tests.Wpf;
 
 namespace Pos.Desktop.Tests;
 
-/// <summary>The payment dialog (BayarNotaForm) and F6 driven through real controls.</summary>
+/// <summary>"Form Bayar Nota" (docs/rms2/form-bayar.png) and F6, driven through real controls.</summary>
 [Collection(WpfUiCollection.Name)]
 public class PaymentUiTests
 {
     private readonly FakeNodeApi _api = new();
     private readonly FakeDialogs _dialogs = new();
+
+    public PaymentUiTests() => _api.OnCreateSale = r => Samples.Saved(r, "TK01-SL-202611-000030", 13700m, 6300m);
 
     private PaymentViewModel Vm(Cart cart, CustomerItem? customer = null) =>
         new(_api, _dialogs, _api.Config, cart, customer, Guid.CreateVersion7());
@@ -27,107 +30,154 @@ public class PaymentUiTests
         return cart;
     }
 
-    [Fact]
-    public void Enter_walks_through_the_fields_in_rms2_order_and_saves_on_keterangan() => OnSta(() =>
+    /// <summary>7.500 + 4.500 + 1.680 = 13.680 (TUNAI grand total 13.700).</summary>
+    private static Cart Cart13680() =>
+        CartOf((Samples.Amplop, 1m), (Samples.Kantong, 1m), (Samples.Product(Guid.CreateVersion7(), "X1", "Permen", 1680m), 1m));
+
+    private void WithDialog(Cart cart, Action<PaymentDialog, PaymentViewModel> test, CustomerItem? customer = null) => OnSta(() =>
     {
-        _api.OnCreateSale = r => Samples.Saved(r, "TK01-SL-202611-000030", 13700m, 6300m);
-        var vm = Vm(CartOf((Samples.Amplop, 1m), (Samples.Kantong, 1m), (Samples.Product(Guid.CreateVersion7(), "X1", "Permen", 1680m), 1m)));
+        var vm = Vm(cart, customer);
         var window = ShowOffScreen(new PaymentDialog { DataContext = vm });
+        try
+        {
+            test(window, vm);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
 
-        Assert.Equal("13.680", Find<TextBox>(window, "GrandTotalBox").Text);
-        Assert.Equal("13.700", Find<TextBox>(window, "TotalBox").Text);
-        var method = Find<ComboBox>(window, "MethodBox");
-        Assert.True(HasFocus(method));
-        Assert.Equal("TUNAI", ((PaymentMethodInfo)method.SelectedItem).Name);
+    private static void Type(UIElement box, string text)
+    {
+        foreach (var c in text)
+            TypeChar(box, c.ToString());
+    }
 
-        PressKey(method, Key.Enter);
-        Assert.True(HasFocus(Find<ComboBox>(window, "DiscountModeBox")));
-        PressKey(Find<ComboBox>(window, "DiscountModeBox"), Key.Enter);
-        Assert.True(HasFocus(Find<TextBox>(window, "DiscountBox")));
-        PressKey(Find<TextBox>(window, "DiscountBox"), Key.Enter);
+    [Fact]
+    public void Layout_matches_rms2_form_bayar_nota() => WithDialog(Cart13680(), (window, _) =>
+    {
+        Assert.Equal("Form Bayar Nota", window.Title);
+        string[] order = ["MethodBox", "TotalBox", "DiscountBox", "GrandTotalBox", "BayarBox", "ChangeBox", "NotesBox", "ReferenceBox"];
+        var rows = order.Select(name => Grid.GetRow(Find<FrameworkElement>(window, name))).ToList();
+        Assert.Equal(rows.Order().ToList(), rows);
+        Assert.Equal(order.Length, rows.Distinct().Count());
+        Assert.Equal(Grid.GetRow(Find<ComboBox>(window, "DiscountModeBox")), Grid.GetRow(Find<TextBox>(window, "DiscountBox")));
 
+        Assert.Equal("TUNAI", ((PaymentMethodInfo)Find<ComboBox>(window, "MethodBox").SelectedItem).Name);
+        Assert.Equal("Potongan", Find<ComboBox>(window, "DiscountModeBox").SelectedItem);
+        Assert.Equal("13.680", Find<TextBox>(window, "TotalBox").Text);
+        Assert.Equal("13.700", Find<TextBox>(window, "GrandTotalBox").Text);
+        Assert.True(Find<TextBox>(window, "TotalBox").IsReadOnly);
+        Assert.True(Find<TextBox>(window, "GrandTotalBox").IsReadOnly);
+        Assert.True(Find<TextBox>(window, "ChangeBox").IsReadOnly);
+        Assert.Equal(TextAlignment.Right, Find<TextBox>(window, "ChangeBox").TextAlignment);
+        Assert.True(Find<TextBox>(window, "GrandTotalBox").FontSize > Find<TextBox>(window, "TotalBox").FontSize);
+        Assert.True(Find<TextBox>(window, "BayarBox").FontSize > Find<TextBox>(window, "TotalBox").FontSize);
+        Assert.False(Find<TextBox>(window, "ReferenceBox").IsEnabled);           // TUNAI
+        Assert.True(HasFocus(Find<TextBox>(window, "BayarBox")));                 // focus starts at Bayar
+    });
+
+    [Fact]
+    public void Typing_bayar_shows_thousands_and_kembali_and_enter_saves() => WithDialog(Cart13680(), (window, vm) =>
+    {
         var bayar = Find<TextBox>(window, "BayarBox");
-        Assert.True(HasFocus(bayar));                         // read-only Total is skipped
-        bayar.Text = "20.000";
+
+        Type(bayar, "20000");
+        Assert.Equal("20.000", bayar.Text);
         Assert.Equal("6.300", Find<TextBox>(window, "ChangeBox").Text);
+
         PressKey(bayar, Key.Enter);
-
-        var reference = Find<TextBox>(window, "ReferenceBox");
-        Assert.True(HasFocus(reference));                     // read-only Kembali is skipped
-        PressKey(reference, Key.Enter);
-        var notes = Find<TextBox>(window, "NotesBox");
-        Assert.True(HasFocus(notes));
-        notes.Text = "titip";
-        Assert.Empty(_api.SaleRequests);
-
-        PressKey(notes, Key.Enter);                          // last field = Simpan
 
         var request = Assert.Single(_api.SaleRequests);
         Assert.Equal(("CASH", 20000m), (request.Payments[0].Method, request.Payments[0].Amount));
-        Assert.Equal("titip", request.Notes);
-        Assert.False(window.IsVisible);
         Assert.Equal("TK01-SL-202611-000030", vm.Result?.Sale.Number);
+        Assert.False(window.IsVisible);
     });
 
     [Fact]
-    public void Choosing_a_non_cash_method_fills_bayar_with_the_total() => OnSta(() =>
+    public void Enter_in_bayar_with_too_little_money_does_not_save() => WithDialog(Cart13680(), (window, _) =>
     {
-        var vm = Vm(CartOf((Samples.Kantong, 3m)));
-        var window = ShowOffScreen(new PaymentDialog { DataContext = vm });
-        try
-        {
-            var method = Find<ComboBox>(window, "MethodBox");
-            method.SelectedItem = vm.PaymentMethods.Single(m => m.Code == "QRIS");
-            DoEvents();
+        var bayar = Find<TextBox>(window, "BayarBox");
+        Type(bayar, "10000");
 
-            Assert.Equal("13.500", Find<TextBox>(window, "BayarBox").Text);
-            Assert.Equal("0", Find<TextBox>(window, "ChangeBox").Text);
-        }
-        finally
-        {
-            window.Close();
-        }
+        PressKey(bayar, Key.Enter);
+
+        Assert.Empty(_api.SaleRequests);
+        Assert.Equal("Jumlah bayar kurang dari total.", Find<TextBlock>(window, "ErrorText").Text);
+        Assert.True(window.IsVisible);
+        Assert.True(HasFocus(bayar));
     });
 
     [Fact]
-    public void Potongan_rupiah_via_the_combo_box_and_value_box() => OnSta(() =>
+    public void Enter_in_potongan_moves_to_bayar_and_updates_grand_total() => WithDialog(Cart13680(), (window, vm) =>
     {
-        var vm = Vm(CartOf((Samples.Kantong, 3m)));
-        var window = ShowOffScreen(new PaymentDialog { DataContext = vm });
-        try
-        {
-            Find<ComboBox>(window, "DiscountModeBox").SelectedIndex = 1;      // Potongan (Rp)
-            Find<TextBox>(window, "DiscountBox").Text = "500";
-            DoEvents();
+        var discount = Find<TextBox>(window, "DiscountBox");
+        discount.Focus();
+        discount.SelectAll();
+        Type(discount, "1000");
+        Assert.Equal("1.000", discount.Text);
 
-            Assert.True(vm.IsNominalDiscount);
-            Assert.Equal("13.000", Find<TextBox>(window, "TotalBox").Text);   // 13.500 - 500, already a multiple of 100
-        }
-        finally
-        {
-            window.Close();
-        }
+        PressKey(discount, Key.Enter);
+
+        Assert.True(HasFocus(Find<TextBox>(window, "BayarBox")));
+        Assert.Equal("12.700", Find<TextBox>(window, "GrandTotalBox").Text);   // 12.680 rounded for cash
+        Assert.Empty(_api.SaleRequests);
     });
 
     [Fact]
-    public void Error_is_shown_and_the_dialog_stays_open() => OnSta(() =>
+    public void Diskon_percent_via_the_small_drop_down() => WithDialog(CartOf((Samples.Kantong, 3m)), (window, vm) =>
     {
-        var vm = Vm(CartOf((Samples.Kantong, 1m)));
-        var window = ShowOffScreen(new PaymentDialog { DataContext = vm });
-        try
-        {
-            var bayar = Find<TextBox>(window, "BayarBox");
-            bayar.Text = "1.000";
-            Click(Find<Button>(window, "SaveButton"));
+        Find<ComboBox>(window, "DiscountModeBox").SelectedItem = "Diskon";
+        var discount = Find<TextBox>(window, "DiscountBox");
+        discount.Focus();
+        discount.SelectAll();
+        Type(discount, "10");
 
-            Assert.Equal("Jumlah bayar kurang dari total.", Find<TextBlock>(window, "ErrorText").Text);
-            Assert.True(window.IsVisible);
-            Assert.True(HasFocus(bayar));
-        }
-        finally
-        {
-            window.Close();
-        }
+        Assert.False(vm.IsNominalDiscount);
+        Assert.Equal("12.200", Find<TextBox>(window, "GrandTotalBox").Text);   // 13.500 - 10% = 12.150 -> 12.200
+    });
+
+    [Fact]
+    public void Non_cash_fills_bayar_and_enables_referensi_and_enter_there_saves() => WithDialog(Cart13680(), (window, _) =>
+    {
+        Find<ComboBox>(window, "MethodBox").SelectedItem = _api.Config.PaymentMethods.Single(m => m.Code == "QRIS");
+        DoEvents();
+
+        Assert.Equal("13.680", Find<TextBox>(window, "BayarBox").Text);
+        var reference = Find<TextBox>(window, "ReferenceBox");
+        Assert.True(reference.IsEnabled);
+        reference.Focus();
+        Type(reference, "QR998877");
+
+        PressKey(reference, Key.Enter);
+
+        var request = Assert.Single(_api.SaleRequests);
+        Assert.Equal(("QRIS", 13680m, "QR998877"), (request.Payments[0].Method, request.Payments[0].Amount, request.Payments[0].Reference));
+    });
+
+    [Fact]
+    public void Enter_in_keterangan_saves() => WithDialog(Cart13680(), (window, _) =>
+    {
+        Type(Find<TextBox>(window, "BayarBox"), "15000");
+        var notes = Find<TextBox>(window, "NotesBox");
+        notes.Focus();
+        Type(notes, "titip");
+
+        PressKey(notes, Key.Enter);
+
+        var request = Assert.Single(_api.SaleRequests);
+        Assert.Equal("titip", request.Notes);
+        Assert.Equal(15000m, request.Payments[0].Amount);
+    });
+
+    [Fact]
+    public void Escape_closes_without_saving() => WithDialog(Cart13680(), (window, vm) =>
+    {
+        PressKey(Find<TextBox>(window, "BayarBox"), Key.Escape);
+
+        Assert.False(vm.DialogResult);
+        Assert.Empty(_api.SaleRequests);
     });
 
     [Fact]

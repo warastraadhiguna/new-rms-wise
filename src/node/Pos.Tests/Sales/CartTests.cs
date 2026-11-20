@@ -78,6 +78,18 @@ public class CartTests
     }
 
     [Fact]
+    public void Half_a_kilo_uses_the_one_kilo_price()
+    {
+        var rice = RiceItem() with { PriceTiers = [new PriceTier(1m, 14000m)] };
+        var cart = new Cart();
+
+        cart.Add(rice, 0.5m);
+
+        Assert.Equal(14000m, cart.Lines[0].Price);
+        Assert.Equal(7000m, cart.Total);
+    }
+
+    [Fact]
     public void Decimal_qty_for_weighed_goods_and_rounded_subtotal()
     {
         var cart = new Cart();
@@ -222,7 +234,7 @@ public class CartTests
     [InlineData("1", "4000")]
     [InlineData("11", "4000")]
     [InlineData("12", "3500")]
-    [InlineData("0.5", null)]
+    [InlineData("0.5", "4000")]       // below the smallest tier: the smallest tier applies
     public void Price_for_qty_uses_the_largest_reached_tier(string qty, string? expected)
     {
         Assert.Equal(expected is null ? null : D(expected), Cart.PriceFor(WaterPcsItem().PriceTiers, D(qty)));

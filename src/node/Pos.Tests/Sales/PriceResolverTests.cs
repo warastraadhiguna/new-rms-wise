@@ -136,9 +136,33 @@ public class PriceResolverTests
     }
 
     [Fact]
-    public void Decimal_qty_below_first_tier_has_no_price()
+    public void Qty_below_the_smallest_tier_uses_the_smallest_tier()
     {
-        Assert.Null(Resolve(0.5m, P("14000", "2026-01-01T00:00:00Z")));
+        // 0,5 kg rice with a price from 1 kg
+        Assert.Equal(14000m, Resolve(0.5m, P("14000", "2026-01-01T00:00:00Z")));
+    }
+
+    [Fact]
+    public void Below_every_tier_the_smallest_min_qty_wins_over_a_branch_wholesale_tier()
+    {
+        // branch only has a 12+ tier, default has the 1+ tier: 0,5 must not get the wholesale price
+        Assert.Equal(4000m, Resolve(0.5m,
+            P("4000", "2026-01-01T00:00:00Z"),
+            P("3300", "2026-01-01T00:00:00Z", Branch, minQty: "12")));
+    }
+
+    [Fact]
+    public void Below_every_tier_branch_wins_on_equal_smallest_min_qty()
+    {
+        Assert.Equal(4100m, Resolve(0.5m,
+            P("4000", "2026-01-01T00:00:00Z"),
+            P("4100", "2026-01-01T00:00:00Z", Branch)));
+    }
+
+    [Fact]
+    public void Only_wholesale_tiers_still_price_small_quantities()
+    {
+        Assert.Equal(3500m, Resolve(2m, P("3500", "2026-01-01T00:00:00Z", minQty: "12")));
     }
 
     [Fact]

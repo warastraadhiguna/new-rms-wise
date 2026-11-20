@@ -1,6 +1,7 @@
 <Window x:Class="Pos.Desktop.Views.OpenShiftWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:infra="clr-namespace:Pos.Desktop.Infrastructure"
         Title="Buka Shift" Width="420" SizeToContent="Height"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
         FocusManager.FocusedElement="{Binding ElementName=OpeningCashBox}">
@@ -20,7 +21,7 @@
         </TextBlock>
 
         <TextBlock Text="Modal awal di laci (Rp)" />
-        <TextBox x:Name="OpeningCashBox" Text="{Binding OpeningCashText, UpdateSourceTrigger=PropertyChanged}"
+        <TextBox x:Name="OpeningCashBox" infra:MoneyBox.IsEnabled="True" Text="{Binding OpeningCashText, UpdateSourceTrigger=PropertyChanged}"
                  FontSize="18" Padding="6" Margin="0,4,0,4" TextAlignment="Right" />
         <TextBlock Text="Contoh: 200.000" Foreground="Gray" Margin="0,0,0,12" />
 

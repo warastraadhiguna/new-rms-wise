@@ -113,7 +113,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         return id;
     }
 
-    public async Task<Guid> CreateProductAsync(bool trackExpiry, string name = "Test product", bool allowQtyMultiplier = true, string? sku = null)
+    public async Task<Guid> CreateProductAsync(bool trackExpiry, string name = "Test product", bool allowQtyMultiplier = true, string? sku = null, Guid? unitId = null)
     {
         var id = Guid.CreateVersion7();
         await using var connection = await Factory.OpenAsync();
@@ -122,7 +122,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
             INSERT INTO products (id, sku, name, base_unit_id, track_expiry, allow_qty_multiplier)
             VALUES (@id, @sku, @name, @unit, @track, @allowQtyMultiplier)
             """,
-            new { id, sku = sku ?? "T-" + id.ToString("N")[..12], name, unit = UnitId, track = trackExpiry, allowQtyMultiplier });
+            new { id, sku = sku ?? "T-" + id.ToString("N")[..12], name, unit = unitId ?? UnitId, track = trackExpiry, allowQtyMultiplier });
         return id;
     }
 
@@ -137,9 +137,13 @@ public sealed class DatabaseFixture : IAsyncLifetime
         string name = "Test product",
         bool allowQtyMultiplier = true,
         decimal storageStock = 0m,
-        string? sku = null)
+        string? sku = null,
+        string unitCode = "PCS")
     {
-        var productId = await CreateProductAsync(trackExpiry, name, allowQtyMultiplier, sku);
+        Guid unitId;
+        await using (var lookup = await Factory.OpenAsync())
+            unitId = await lookup.ExecuteScalarAsync<Guid>("SELECT id FROM units WHERE code = @unitCode", new { unitCode });
+        var productId = await CreateProductAsync(trackExpiry, name, allowQtyMultiplier, sku, unitId);
         var productUnitId = Guid.CreateVersion7();
         var barcode = "TB" + productUnitId.ToString("N")[..16];
         var effectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -148,7 +152,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         {
             await connection.ExecuteAsync(
                 "INSERT INTO product_units (id, product_id, unit_id, conversion, is_default_sale) VALUES (@productUnitId, @productId, @UnitId, 1, 1)",
-                new { productUnitId, productId, UnitId });
+                new { productUnitId, productId, UnitId = unitId });
             await connection.ExecuteAsync("INSERT INTO product_barcodes (id, product_unit_id, barcode) VALUES (@id, @productUnitId, @barcode)",
                 new { id = Guid.CreateVersion7(), productUnitId, barcode });
             foreach (var (minQty, tierPrice) in new[] { (1m, price) }.Concat(tiers ?? []))

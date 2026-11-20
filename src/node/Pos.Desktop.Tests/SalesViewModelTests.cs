@@ -421,26 +421,58 @@ public class SalesViewModelTests
     }
 
     [Fact]
-    public async Task Escape_closes_an_empty_form_and_confirms_a_full_one()
+    public async Task Escape_closes_an_empty_form_without_asking()
     {
         var vm = Vm();
         var closed = 0;
         vm.CloseRequested += (_, _) => closed++;
 
-        vm.EscapeCommand.Execute(null);
-        Assert.Equal(1, closed);
+        await vm.EscapeCommand.ExecuteAsync(null);
 
-        await Scan(vm, "13589");
-        _dialogs.ConfirmAnswer = false;
-        vm.EscapeCommand.Execute(null);
         Assert.Equal(1, closed);
+        Assert.Empty(_dialogs.Asked);
+    }
+
+    [Fact]
+    public async Task Escape_with_items_needs_a_reason_and_saves_a_cancellation_like_f12()
+    {
+        var vm = Vm();
+        var closed = 0;
+        vm.CloseRequested += (_, _) => closed++;
+        _api.OnCancelCart = (id, reason, total, lines) => new CartCancellationResult(id, "TK01-BT-202611-000004", reason, total);
+        await Scan(vm, "13589", qty: "2");
+
+        _dialogs.CancelReason = null;                       // reason dialog cancelled: form stays
+        await vm.EscapeCommand.ExecuteAsync(null);
+        Assert.Equal(0, closed);
         Assert.Single(vm.Lines);
+        Assert.DoesNotContain(_api.Calls, c => c.StartsWith("cancel-cart", StringComparison.Ordinal));
 
-        _dialogs.ConfirmAnswer = true;
-        vm.EscapeCommand.Execute(null);
-        Assert.Equal(2, closed);
+        _dialogs.CancelReason = "Pelanggan pergi";
+        await vm.EscapeCommand.ExecuteAsync(null);
+
+        Assert.Contains("cancel-cart:Pelanggan pergi", _api.Calls);
+        Assert.Equal(1, closed);
         Assert.Empty(vm.Lines);
         Assert.Null(_cartStore.Saved);
+        Assert.DoesNotContain(_dialogs.Asked, a => a.StartsWith("confirm", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Escape_keeps_the_form_open_when_the_cancellation_cannot_be_saved()
+    {
+        var vm = Vm();
+        var closed = 0;
+        vm.CloseRequested += (_, _) => closed++;
+        _dialogs.CancelReason = "Batal";
+        _api.OnCancelCart = (_, _, _, _) => throw new NodeApiException("Node Service tidak dapat dihubungi.", "node_unreachable", null);
+        await Scan(vm, "13589");
+
+        await vm.EscapeCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, closed);
+        Assert.Single(vm.Lines);
+        Assert.Equal("Node Service tidak dapat dihubungi.", vm.StatusMessage);
     }
 
     // ---- warnings, persistence, view settings, member -----------------------------------------
@@ -532,7 +564,7 @@ public class SalesViewModelTests
     {
         _dialogs.OnPayment = p =>
         {
-            Assert.Equal(7500m, p.GrandTotal);
+            Assert.Equal(7500m, p.Total);
             return Samples.Saved(new CreateSaleRequest(p.SaleId, null, [], [], null, null, null, null, null), "TK01-SL-202611-000021", 7500m, 2500m);
         };
         var vm = Vm();
