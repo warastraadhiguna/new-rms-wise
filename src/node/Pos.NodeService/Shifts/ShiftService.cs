@@ -91,6 +91,23 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
         }, "Open shift", cancellationToken);
     }
 
+    /// <summary>The device's open shift, or 404 <c>no_open_shift</c>.</summary>
+    public async Task<ShiftDto> GetCurrentAsync(Guid deviceId, CancellationToken cancellationToken = default)
+    {
+        var node = await nodeIdentity.GetAsync(cancellationToken);
+        await using var c = await runner.ConnectionFactory.OpenAsync(cancellationToken);
+        var shift = await c.QuerySingleOrDefaultAsync<ShiftRow>(new CommandDefinition(
+            """
+            SELECT id AS Id, node_id AS NodeId, number AS Number, device_id AS DeviceId, cashier_id AS CashierId,
+                   status AS Status, opened_at AS OpenedAt, opening_cash AS OpeningCash, row_version AS RowVersion
+            FROM cashier_shifts WHERE device_id = @deviceId AND node_id = @nodeId AND status = @open
+            """, new { deviceId, nodeId = node.Id, open = ShiftStatus.Open }, cancellationToken: cancellationToken))
+            ?? throw ApiException.NotFound("no_open_shift", $"Device {deviceId} has no open shift.");
+
+        return new ShiftDto(shift.Id, shift.NodeId, shift.Number, shift.DeviceId, shift.CashierId, shift.Status,
+            shift.OpenedAt, null, shift.OpeningCash, null, null, null, null, null, null, shift.RowVersion);
+    }
+
     public async Task<ShiftDto> CloseAsync(CloseShiftRequest request, CancellationToken cancellationToken = default)
     {
         if (request.CountedCash < 0)

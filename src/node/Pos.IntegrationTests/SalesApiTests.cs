@@ -319,7 +319,7 @@ public class SalesApiTests(DatabaseFixture db) : IAsyncLifetime
             "SELECT last_number FROM document_sequences WHERE doc_type = 'SL' AND period = @period", new { period }) ?? 0;
 
         var failing = new SaleService(new TransactionRunner(db.Factory), new NodeIdentity(db.Factory, "TK01"), TimeProvider.System,
-            new SaleHooks { AfterStep = (step, _) => step == SaleSteps.OutboxWritten ? throw new InvalidOperationException("boom") : Task.CompletedTask });
+            hooks: new SaleHooks { AfterStep = (step, _) => step == SaleSteps.OutboxWritten ? throw new InvalidOperationException("boom") : Task.CompletedTask });
         var id = Guid.CreateVersion7();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => failing.CreateAsync(new CreateSaleRequest(

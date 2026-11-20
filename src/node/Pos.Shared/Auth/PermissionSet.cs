@@ -12,6 +12,15 @@ public static class Permissions
 
     /// <summary>Sell on a shift opened by another user (otherwise only the shift owner may sell).</summary>
     public const string ShiftShare = "shift.share";
+
+    /// <summary>Supervisor: approve a sale discount above the cashier's <c>discount.max</c>.</summary>
+    public const string SaleDiscountOverride = "sale.discount.override";
+
+    /// <summary>Supervisor: approve deleting a line from the cart.</summary>
+    public const string SaleLineDelete = "sale.line.delete";
+
+    /// <summary>Actions a supervisor can approve with a PIN.</summary>
+    public static IReadOnlyList<string> ApprovalActions { get; } = [SaleLineDelete, SaleDiscountOverride];
 }
 
 /// <summary>

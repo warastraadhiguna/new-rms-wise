@@ -3,13 +3,22 @@ namespace Pos.NodeService.Sales;
 /// <summary>The cashier comes from the access token and the device from header X-Device-Id.</summary>
 /// <param name="Id">UUID v7 created by the client; sending the same id again returns the stored sale.</param>
 /// <param name="LocationId">Optional; defaults to the node's single sellable location.</param>
+/// <param name="DiscountPct">Sale discount as a percentage, or</param>
+/// <param name="DiscountAmount">sale discount as an amount (not both).</param>
+/// <param name="ApprovalToken">From POST /auth/approve (action sale.discount.override), or</param>
+/// <param name="SupervisorUsername">supervisor username + PIN, when the discount is above the cashier's limit.</param>
 public sealed record CreateSaleRequest(
     Guid Id,
     Guid? CustomerId,
     Guid? LocationId,
     IReadOnlyList<SaleLineRequest>? Lines,
     IReadOnlyList<SalePaymentRequest>? Payments,
-    string? Notes = null);
+    string? Notes = null,
+    decimal? DiscountPct = null,
+    decimal? DiscountAmount = null,
+    string? ApprovalToken = null,
+    string? SupervisorUsername = null,
+    string? SupervisorPin = null);
 
 /// <summary>Exactly one of <c>ProductUnitId</c> or <c>Barcode</c>. Discounts are manual and optional.</summary>
 public sealed record SaleLineRequest(
@@ -36,6 +45,7 @@ public sealed record SaleDto(
     DateTime SoldAt,
     decimal Subtotal,
     decimal DiscountAmount,
+    Guid? DiscountApprovedBy,
     decimal TaxAmount,
     decimal RoundingAmount,
     decimal Total,

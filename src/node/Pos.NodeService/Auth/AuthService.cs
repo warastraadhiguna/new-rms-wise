@@ -13,12 +13,23 @@ public sealed record PinLoginRequest(string? Username, string? Pin);
 
 public sealed record AuthUserDto(Guid Id, string Username, string FullName);
 
+public sealed record NodeDto(Guid Id, string Code, string Name);
+
 public sealed record LoginResponse(
     string AccessToken,
     string TokenType,
     DateTime ExpiresAt,
     AuthUserDto User,
-    IReadOnlyCollection<string> Permissions);
+    IReadOnlyCollection<string> Permissions,
+    NodeDto Node);
+
+/// <param name="Action">One of <see cref="Permissions.ApprovalActions"/>.</param>
+/// <param name="Username">Supervisor username.</param>
+/// <param name="Pin">Supervisor PIN.</param>
+public sealed record ApproveRequest(string? Action, string? Username, string? Pin);
+
+/// <param name="ApprovalToken">One-time token for <c>Action</c>, valid until <c>ExpiresAt</c>, only for the requesting user.</param>
+public sealed record ApprovalResponse(string ApprovalToken, string Action, DateTime ExpiresAt, AuthUserDto ApprovedBy);
 
 /// <summary>
 /// Password and PIN login against local data only (works without internet). Failures are counted per
@@ -29,6 +40,67 @@ public sealed class AuthService(TransactionRunner runner, NodeIdentity nodeIdent
 {
     private const string InvalidCredentialsMessage = "The username or the password/PIN is not correct.";
 
+    /// <summary>How long an approval token stays usable.</summary>
+    public static readonly TimeSpan ApprovalLifetime = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Checks a supervisor's username + PIN for one action (same lockout as login). The supervisor needs the
+    /// action's permission at this node. Wrong credentials are 403 here, not 401, so the cashier's own session stays valid.
+    /// </summary>
+    public async Task<AuthUserDto> VerifyApproverAsync(string? username, string? pin, string action, CancellationToken cancellationToken = default)
+    {
+        var node = await nodeIdentity.GetAsync(cancellationToken);
+        var loginName = Normalize(username);
+        var outcome = await runner.RunAsync(
+            (c, tx, ct) => AttemptAsync(c, tx, node, loginName, pin ?? "", usePin: true, ct), "Approval", cancellationToken);
+
+        return outcome switch
+        {
+            { Locked: { } remaining } => throw Locked(remaining),
+            { User: null } => throw new ApiException(StatusCodes.Status403Forbidden, "approval_rejected",
+                "The supervisor username or PIN is not correct."),
+            { Permissions: null } or { HasNodeAccess: false } => throw NotPermitted(action),
+            _ when !outcome.Permissions!.Has(action) => throw NotPermitted(action),
+            _ => new AuthUserDto(outcome.User!.Id, outcome.User.Username, outcome.User.FullName),
+        };
+    }
+
+    /// <summary>POST /auth/approve: a supervisor approves one action for the logged-in user with a one-time token.</summary>
+    public async Task<ApprovalResponse> ApproveAsync(ApproveRequest request, Guid requestedBy, CancellationToken cancellationToken = default)
+    {
+        var action = (request.Action ?? "").Trim().ToLowerInvariant();
+        if (!Permissions.ApprovalActions.Contains(action))
+            throw ApiException.Unprocessable("invalid_action",
+                $"Action must be one of: {string.Join(", ", Permissions.ApprovalActions)}.");
+
+        var approver = await VerifyApproverAsync(request.Username, request.Pin, action, cancellationToken);
+        var token = ApprovalTokens.NewToken();
+        var expiresAt = clock.GetUtcNow().UtcDateTime + ApprovalLifetime;
+
+        await runner.RunAsync((c, tx, ct) => c.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO approval_tokens (token_hash, action, approved_by, requested_by, expires_at)
+            VALUES (@hash, @action, @approvedBy, @requestedBy, @expiresAt)
+            """,
+            new { hash = ApprovalTokens.Hash(token), action, approvedBy = approver.Id, requestedBy, expiresAt },
+            tx, cancellationToken: ct)), "Approval token", cancellationToken);
+
+        return new ApprovalResponse(token, action, expiresAt, approver);
+    }
+
+    private static ApiException Locked(TimeSpan remaining) =>
+        new(StatusCodes.Status429TooManyRequests, "account_locked", "Too many failed attempts. Try again later.",
+            new Dictionary<string, object?> { ["retry_after_seconds"] = (int)Math.Ceiling(remaining.TotalSeconds) });
+
+    private static ApiException NotPermitted(string action) =>
+        new(StatusCodes.Status403Forbidden, "approval_not_permitted", $"This supervisor may not approve '{action}'.");
+
+    private static string Normalize(string? username)
+    {
+        var loginName = (username ?? "").Trim().ToLowerInvariant();
+        return loginName.Length > 50 ? loginName[..50] : loginName;
+    }
+
     public Task<LoginResponse> LoginWithPasswordAsync(LoginRequest request, CancellationToken cancellationToken = default) =>
         LoginAsync(request.Username, request.Password, usePin: false, cancellationToken);
 
@@ -38,9 +110,7 @@ public sealed class AuthService(TransactionRunner runner, NodeIdentity nodeIdent
     private async Task<LoginResponse> LoginAsync(string? username, string? secret, bool usePin, CancellationToken cancellationToken)
     {
         var node = await nodeIdentity.GetAsync(cancellationToken);
-        var loginName = (username ?? "").Trim().ToLowerInvariant();
-        if (loginName.Length > 50)
-            loginName = loginName[..50];
+        var loginName = Normalize(username);
 
         // The outcome is decided inside the transaction and turned into an error after commit,
         // so a failed attempt is still recorded.
@@ -49,13 +119,11 @@ public sealed class AuthService(TransactionRunner runner, NodeIdentity nodeIdent
 
         return outcome switch
         {
-            { Locked: { } remaining } => throw new ApiException(StatusCodes.Status429TooManyRequests, "account_locked",
-                "Too many failed attempts. Try again later.",
-                new Dictionary<string, object?> { ["retry_after_seconds"] = (int)Math.Ceiling(remaining.TotalSeconds) }),
+            { Locked: { } remaining } => throw Locked(remaining),
             { User: null } => throw new ApiException(StatusCodes.Status401Unauthorized, "invalid_credentials", InvalidCredentialsMessage),
             { HasNodeAccess: false } => throw new ApiException(StatusCodes.Status403Forbidden, "no_access_to_node",
                 $"This user has no role at node {node.Code}."),
-            _ => Issue(outcome.User!, outcome.Permissions!),
+            _ => Issue(outcome.User!, outcome.Permissions!, node),
         };
     }
 
@@ -111,10 +179,11 @@ public sealed class AuthService(TransactionRunner runner, NodeIdentity nodeIdent
             WHERE login_name = @loginName
             """, new { state.FailedCount, state.LockedUntil, lastFailedAt, loginName }, tx, cancellationToken: ct));
 
-    private LoginResponse Issue(UserRow user, PermissionSet permissions)
+    private LoginResponse Issue(UserRow user, PermissionSet permissions, NodeInfo node)
     {
         var (token, expiresAt) = tokens.Issue(user.Id, user.Username, permissions.Names, clock.GetUtcNow().UtcDateTime);
-        return new LoginResponse(token, "Bearer", expiresAt, new AuthUserDto(user.Id, user.Username, user.FullName), permissions.Names);
+        return new LoginResponse(token, "Bearer", expiresAt, new AuthUserDto(user.Id, user.Username, user.FullName),
+            permissions.Names, new NodeDto(node.Id, node.Code, node.Name));
     }
 
     private sealed record UserRow(Guid Id, string Username, string FullName, string PasswordHash, string? PinHash);

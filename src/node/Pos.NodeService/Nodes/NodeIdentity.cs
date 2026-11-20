@@ -4,7 +4,7 @@ using Pos.NodeService.Data;
 namespace Pos.NodeService.Nodes;
 
 /// <summary>This Node Service's own node, its branch and the branch timezone.</summary>
-public sealed record NodeInfo(Guid Id, string Code, Guid BranchId, string TimeZone);
+public sealed record NodeInfo(Guid Id, string Code, Guid BranchId, string TimeZone, string Name = "");
 
 public sealed class NodeNotFoundException(string code)
     : Exception($"Node '{code}' (setting Node:Code) does not exist in the database yet. Run the dev seed or sync master data from HQ.");
@@ -29,7 +29,7 @@ public sealed class NodeIdentity(DbConnectionFactory connections, string code)
         await using var connection = await connections.OpenAsync(cancellationToken);
         var node = await connection.QuerySingleOrDefaultAsync<NodeInfo>(new CommandDefinition(
             """
-            SELECT n.id AS Id, n.code AS Code, n.branch_id AS BranchId, b.timezone AS TimeZone
+            SELECT n.id AS Id, n.code AS Code, n.branch_id AS BranchId, b.timezone AS TimeZone, n.name AS Name
             FROM nodes n JOIN branches b ON b.id = n.branch_id
             WHERE n.code = @Code AND n.deleted_at IS NULL
             """,

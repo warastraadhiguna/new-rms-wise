@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using Pos.NodeService.Auth;
+using Pos.NodeService.Catalog;
+using Pos.NodeService.Customers;
 using Pos.NodeService.Sales;
 using Pos.NodeService.Shifts;
 using Pos.Shared.Auth;
@@ -17,9 +19,16 @@ public static class ApiEndpoints
             service.LoginWithPasswordAsync(request, ct));
         auth.MapPost("/pin", (PinLoginRequest request, AuthService service, CancellationToken ct) =>
             service.LoginWithPinAsync(request, ct));
+        // A supervisor approves one action for the logged-in user (one-time token, valid briefly).
+        auth.MapPost("/approve", (ApproveRequest request, AuthService service, ClaimsPrincipal user, CancellationToken ct) =>
+                service.ApproveAsync(request, user.UserId(), ct))
+            .RequireAuthorization();
 
         // The user comes from the token and the device from X-Device-Id, never from the request body.
         var shifts = api.MapGroup("/shifts").AddEndpointFilter<DeviceFilter>();
+        shifts.MapGet("/current", (ShiftService service, HttpContext http, CancellationToken ct) =>
+                service.GetCurrentAsync(DeviceFilter.DeviceId(http), ct))
+            .RequireAuthorization();
         shifts.MapPost("/open", async (OpenShiftRequest request, ShiftService service, HttpContext http, ClaimsPrincipal user, CancellationToken ct) =>
             {
                 var shift = await service.OpenAsync(request, DeviceFilter.DeviceId(http), user.UserId(), ct);
@@ -33,11 +42,16 @@ public static class ApiEndpoints
         // 201 when created, 200 when the same sale id was already stored (idempotent retry from the client).
         api.MapPost("/sales", async (CreateSaleRequest request, SaleService service, HttpContext http, ClaimsPrincipal user, CancellationToken ct) =>
             {
-                var result = await service.CreateAsync(request, DeviceFilter.DeviceId(http), user.UserId(),
-                    canUseAnyShift: user.HasPermission(Permissions.ShiftShare), ct);
+                var permissions = PermissionSet.FromNames(user.FindAll(TokenService.PermissionClaim).Select(c => c.Value));
+                var result = await service.CreateAsync(request, DeviceFilter.DeviceId(http), user.UserId(), permissions, ct);
                 return result.Replayed ? Results.Ok(result) : Results.Created($"/api/v1/sales/{result.Sale.Id}", result);
             })
             .AddEndpointFilter<DeviceFilter>()
+            .RequireAuthorization(Permissions.SaleCreate);
+
+        api.MapGet("/products/search", (string? q, ProductSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
+            .RequireAuthorization(Permissions.SaleCreate);
+        api.MapGet("/customers/search", (string? q, CustomerSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
             .RequireAuthorization(Permissions.SaleCreate);
 
         return app;

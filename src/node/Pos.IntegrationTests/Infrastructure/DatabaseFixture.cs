@@ -113,13 +113,16 @@ public sealed class DatabaseFixture : IAsyncLifetime
         return id;
     }
 
-    public async Task<Guid> CreateProductAsync(bool trackExpiry)
+    public async Task<Guid> CreateProductAsync(bool trackExpiry, string name = "Test product", bool allowQtyMultiplier = true, string? sku = null)
     {
         var id = Guid.CreateVersion7();
         await using var connection = await Factory.OpenAsync();
         await connection.ExecuteAsync(
-            "INSERT INTO products (id, sku, name, base_unit_id, track_expiry) VALUES (@id, @sku, @name, @unit, @track)",
-            new { id, sku = "T-" + id.ToString("N")[..12], name = "Test product", unit = UnitId, track = trackExpiry });
+            """
+            INSERT INTO products (id, sku, name, base_unit_id, track_expiry, allow_qty_multiplier)
+            VALUES (@id, @sku, @name, @unit, @track, @allowQtyMultiplier)
+            """,
+            new { id, sku = sku ?? "T-" + id.ToString("N")[..12], name, unit = UnitId, track = trackExpiry, allowQtyMultiplier });
         return id;
     }
 
@@ -130,9 +133,13 @@ public sealed class DatabaseFixture : IAsyncLifetime
     public async Task<TestProduct> CreateSellableProductAsync(
         decimal price, bool trackExpiry = false,
         (DateOnly? Expiry, decimal Qty)[]? stock = null,
-        (decimal MinQty, decimal Price)[]? tiers = null)
+        (decimal MinQty, decimal Price)[]? tiers = null,
+        string name = "Test product",
+        bool allowQtyMultiplier = true,
+        decimal storageStock = 0m,
+        string? sku = null)
     {
-        var productId = await CreateProductAsync(trackExpiry);
+        var productId = await CreateProductAsync(trackExpiry, name, allowQtyMultiplier, sku);
         var productUnitId = Guid.CreateVersion7();
         var barcode = "TB" + productUnitId.ToString("N")[..16];
         var effectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -163,6 +170,15 @@ public sealed class DatabaseFixture : IAsyncLifetime
                     new Pos.Shared.Stock.StockDocumentLine(NodeId, LocationA, productId, Pos.Shared.Stock.StockDocTypes.Adjustment,
                         docId, Guid.CreateVersion7(), DateTime.UtcNow),
                     Pos.Shared.Stock.StockDirection.In, s.Qty, s.Expiry)).ToList());
+        }
+
+        if (storageStock != 0)
+        {
+            await new Pos.NodeService.Stock.StockPostingService(Factory).PostAsync([
+                new Pos.NodeService.Stock.StockMovement(
+                    new Pos.Shared.Stock.StockDocumentLine(NodeId, LocationB, productId, Pos.Shared.Stock.StockDocTypes.Adjustment,
+                        Guid.CreateVersion7(), Guid.CreateVersion7(), DateTime.UtcNow),
+                    Pos.Shared.Stock.StockDirection.In, storageStock)]);
         }
 
         return new TestProduct(productId, productUnitId, barcode);

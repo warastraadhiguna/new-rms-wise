@@ -48,7 +48,10 @@ builder.Services.AddSingleton(sp => new StockPostingService(sp.GetRequiredServic
 builder.Services.AddPosAuth();
 builder.Services.AddSingleton<ShiftService>();
 builder.Services.AddSingleton(sp => new SaleService(
-    sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<NodeIdentity>(), sp.GetRequiredService<TimeProvider>()));
+    sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<NodeIdentity>(), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<AuthService>()));
+builder.Services.AddSingleton<Pos.NodeService.Catalog.ProductSearchService>();
+builder.Services.AddSingleton<Pos.NodeService.Customers.CustomerSearchService>();
 builder.Services.AddSingleton<DevSeeder>(sp => new DevSeeder(
     sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("Pos.DevSeed")));

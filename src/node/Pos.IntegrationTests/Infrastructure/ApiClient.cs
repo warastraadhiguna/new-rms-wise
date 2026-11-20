@@ -30,6 +30,21 @@ public static class ApiClient
         return (response.StatusCode, json);
     }
 
+    public static async Task<(HttpStatusCode Status, JsonElement Body)> GetAsync(
+        this HttpClient client, string url, string? token = null, Guid? device = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (token is not null)
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (device is not null)
+            request.Headers.Add(DeviceHeader, device.Value.ToString());
+
+        using var response = await client.SendAsync(request);
+        var text = await response.Content.ReadAsStringAsync();
+        var json = string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
+        return (response.StatusCode, json);
+    }
+
     public static string Str(this JsonElement element, string property) => element.GetProperty(property).GetString()!;
 
     public static decimal Dec(this JsonElement element, string property) =>
