@@ -175,8 +175,9 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
         await Exec(
             """
             INSERT INTO payment_methods (id, code, name, is_cash, is_credit) VALUES
-              (@cash, 'CASH', 'Tunai', 1, 0), (@qris, 'QRIS', 'QRIS', 0, 0), (@credit, 'CREDIT', 'Kredit / piutang', 0, 1)
-            """, new { cash = Id(), qris = Id(), credit = Id() });
+              (@cash, 'CASH', 'TUNAI', 1, 0), (@debit, 'DEBIT', 'DEBIT', 0, 0), (@qris, 'QRIS', 'QRIS', 0, 0),
+              (@transfer, 'TRANSFER', 'TRANSFER', 0, 0), (@credit, 'CREDIT', 'KREDIT', 0, 1)
+            """, new { cash = Id(), debit = Id(), qris = Id(), transfer = Id(), credit = Id() });
         await Exec(
             """
             INSERT INTO contacts (id, code, is_customer, name, phone, credit_limit, payment_term_days)
@@ -215,6 +216,21 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
 
         if (users + roles > 0)
             _logger.LogInformation("Dev seed: set credentials for {Users} user(s) and permissions for {Roles} role(s).", users, roles);
+
+        // Payment methods as in RMS 2 (TUNAI, DEBIT, QRIS, TRANSFER, KREDIT) for databases seeded earlier.
+        var methods =
+            await Exec("UPDATE payment_methods SET name = 'TUNAI' WHERE code = 'CASH' AND name = 'Tunai'", new { })
+            + await Exec("UPDATE payment_methods SET name = 'KREDIT' WHERE code = 'CREDIT' AND name = 'Kredit / piutang'", new { });
+        foreach (var code in new[] { "DEBIT", "TRANSFER" })
+        {
+            methods += await Exec(
+                """
+                INSERT INTO payment_methods (id, code, name, is_cash, is_credit)
+                SELECT @id, @code, @code, 0, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM payment_methods WHERE code = @code)
+                """, new { id = Guid.CreateVersion7(), code });
+        }
+        if (methods > 0)
+            _logger.LogInformation("Dev seed: updated {Count} payment method(s) to the RMS 2 list.", methods);
     }
 
     private static async Task<DevSeedResult> LoadAsync(MySqlConnection c, MySqlTransaction tx, string nodeCode, bool created, CancellationToken ct)

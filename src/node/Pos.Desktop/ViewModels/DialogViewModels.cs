@@ -52,6 +52,19 @@ public sealed partial class SupervisorDialogViewModel(string purpose) : DialogVi
     }
 }
 
+/// <summary>"Transaksi Berhasil": nota number and change, large, closed with Enter.</summary>
+public sealed partial class SaleResultViewModel(Services.SaleResult result) : DialogViewModel
+{
+    public string Number { get; } = result.Sale.Number;
+    public decimal Total { get; } = result.Sale.Total;
+    public decimal Change { get; } = result.Sale.Change;
+    public string Warnings { get; } = string.Join(" ", result.Warnings.Select(w =>
+        w.Code == "credit_limit_exceeded" ? "Kredit pelanggan melebihi limit." : w.Message));
+
+    [RelayCommand]
+    private void Close() => DialogResult = true;
+}
+
 /// <param name="Path">Property of the item shown in this column.</param>
 /// <param name="Format">"money" or "qty" for Indonesian number formatting, null for text.</param>
 public sealed record PickerColumn(string Header, string Path, double Width, string? Format = null);

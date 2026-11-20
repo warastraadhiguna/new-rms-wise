@@ -113,6 +113,23 @@ public sealed class FakeNodeApi : INodeApi
         Calls.Add($"cancel-cart:{reason}");
         return Task.FromResult(OnCancelCart!(id, reason, totalAmount, lines));
     }
+
+    public SalesConfig Config { get; set; } = Samples.Config();
+    public Func<CreateSaleRequest, SaleResult>? OnCreateSale { get; set; }
+    public List<CreateSaleRequest> SaleRequests { get; } = [];
+
+    public Task<SalesConfig> GetSalesConfigAsync(CancellationToken ct = default)
+    {
+        Calls.Add("sales-config");
+        return Task.FromResult(Config);
+    }
+
+    public Task<SaleResult> CreateSaleAsync(CreateSaleRequest request, CancellationToken ct = default)
+    {
+        Calls.Add("create-sale");
+        SaleRequests.Add(request);
+        return Task.FromResult(OnCreateSale!(request));
+    }
 }
 
 /// <summary>Scripted answers for the sales screen's dialogs; records what was asked.</summary>
@@ -140,6 +157,20 @@ public sealed class FakeDialogs : IDialogService
     }
 
     public CustomerItem? PickCustomer(string initialQuery) { Asked.Add($"pick-customer:{initialQuery}"); return CustomerToPick; }
+
+    /// <summary>Plays the cashier in the payment dialog: gets the dialog's ViewModel, returns what the dialog would.</summary>
+    public Func<ViewModels.PaymentViewModel, SaleResult?>? OnPayment { get; set; }
+    public List<ViewModels.PaymentViewModel> Payments { get; } = [];
+    public List<SaleResult> ShownResults { get; } = [];
+
+    public SaleResult? ShowPayment(ViewModels.PaymentViewModel payment)
+    {
+        Asked.Add("payment");
+        Payments.Add(payment);
+        return OnPayment?.Invoke(payment);
+    }
+
+    public void ShowSaleResult(SaleResult result) { Asked.Add("sale-result"); ShownResults.Add(result); }
 }
 
 public sealed class MemoryCartStore : ICartStore
@@ -200,4 +231,18 @@ public static class Samples
     public static readonly ProductItem Voucher = Product(VoucherId, "VCR10", "Voucher pulsa 10rb", 10500m, allowMultiplier: false);
 
     public static LoginResult LoginWith(params string[] permissions) => Login() with { Permissions = permissions };
+
+    public static SalesConfig Config(decimal? discountMax = 10m, decimal step = 100m) => new(
+        [
+            new PaymentMethodInfo(Guid.CreateVersion7(), "CASH", "TUNAI", IsCash: true, IsCredit: false),
+            new PaymentMethodInfo(Guid.CreateVersion7(), "DEBIT", "DEBIT", false, false),
+            new PaymentMethodInfo(Guid.CreateVersion7(), "QRIS", "QRIS", false, false),
+            new PaymentMethodInfo(Guid.CreateVersion7(), "TRANSFER", "TRANSFER", false, false),
+            new PaymentMethodInfo(Guid.CreateVersion7(), "CREDIT", "KREDIT", false, IsCredit: true),
+        ],
+        step, "nearest", 0, discountMax);
+
+    /// <summary>What the server would answer for a request (totals are not recomputed here).</summary>
+    public static SaleResult Saved(CreateSaleRequest request, string number, decimal total, decimal change, params SaleWarningInfo[] warnings) =>
+        new(new SaleSummary(request.Id, number, total, 0m, 0m, total, change, 0m), warnings, Replayed: false);
 }

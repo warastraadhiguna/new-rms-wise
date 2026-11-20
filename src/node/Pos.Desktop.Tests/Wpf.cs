@@ -50,10 +50,14 @@ public static class Wpf
     public static T Find<T>(FrameworkElement scope, string name) where T : FrameworkElement =>
         scope.FindName(name) as T ?? throw new InvalidOperationException($"Control '{name}' not found in {scope.GetType().Name}.");
 
+    /// <summary>Like a real key press: PreviewKeyDown (tunnelling), then KeyDown (bubbling) unless handled.</summary>
     public static void PressKey(UIElement element, Key key)
     {
         var source = PresentationSource.FromVisual(element) ?? throw new InvalidOperationException("The element is not shown.");
-        element.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = Keyboard.KeyDownEvent });
+        var preview = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+        element.RaiseEvent(preview);
+        if (!preview.Handled)
+            element.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = Keyboard.KeyDownEvent });
         DoEvents();
     }
 

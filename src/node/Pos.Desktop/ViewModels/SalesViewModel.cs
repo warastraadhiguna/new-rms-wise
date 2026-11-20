@@ -408,6 +408,60 @@ public sealed partial class SalesViewModel : ObservableObject
         }
     }
 
+    // ---- pay --------------------------------------------------------------------------------------
+
+    /// <summary>Id for the next payment of this exact cart; reused after a failed or interrupted payment.</summary>
+    private Guid? _pendingSaleId;
+
+    /// <summary>F6 "Bayar": payment dialog; on success show the nota and change, clear the cart.</summary>
+    [RelayCommand]
+    private async Task PayAsync()
+    {
+        if (_cart.IsEmpty)
+        {
+            StatusMessage = "Keranjang masih kosong.";
+            RequestFocus("search");
+            return;
+        }
+
+        SalesConfig config;
+        try
+        {
+            config = await _api.GetSalesConfigAsync();
+        }
+        catch (NodeApiException ex)
+        {
+            StatusMessage = ex.Message;
+            return;
+        }
+
+        if (_pendingSaleId is null)
+        {
+            _pendingSaleId = Guid.CreateVersion7();
+            SaveCart();
+        }
+
+        var payment = new PaymentViewModel(_api, _dialogs, config, _cart, Customer, _pendingSaleId.Value);
+        var result = _dialogs.ShowPayment(payment);
+        if (result is null)
+        {
+            RequestFocus("search");
+            return;
+        }
+
+        ClearTransaction();
+        _dialogs.ShowSaleResult(result);
+        StatusMessage = $"Nota {result.Sale.Number} tersimpan. Kembali Rp {result.Sale.Change.ToString("#,0", Indonesian)}.";
+        WarningMessage = result.Warnings.Count == 0 ? null : string.Join(" ", result.Warnings.Select(SaleWarningText));
+        RequestFocus("search");
+    }
+
+    private static string SaleWarningText(SaleWarningInfo warning) => warning.Code switch
+    {
+        "credit_limit_exceeded" => "Kredit pelanggan melebihi limit.",
+        _ => warning.Message,
+    };
+
     // ---- cancel and close ------------------------------------------------------------------------
 
     /// <summary>F12 "Batal": cancel the whole cart with a reason (saved as a cart_cancellations document).</summary>
@@ -467,6 +521,7 @@ public sealed partial class SalesViewModel : ObservableObject
     public void ClearTransaction()
     {
         _cart.Clear();
+        _pendingSaleId = null;
         IsDeleteUnlocked = false;
         Customer = null;
         WarningMessage = null;
@@ -486,6 +541,8 @@ public sealed partial class SalesViewModel : ObservableObject
 
     partial void OnCustomerChanged(CustomerItem? value)
     {
+        if (!_restoring)
+            _pendingSaleId = null;   // another customer = another sale
         _suppressCustomerText = true;
         CustomerText = value?.Display ?? (string.IsNullOrWhiteSpace(CustomerText) ? "" : CustomerText);
         _suppressCustomerText = false;
@@ -563,6 +620,8 @@ public sealed partial class SalesViewModel : ObservableObject
 
     private void CartChanged(int? select)
     {
+        if (!_restoring)
+            _pendingSaleId = null;   // a changed cart is a different sale
         Lines.Clear();
         for (var i = 0; i < _cart.Lines.Count; i++)
         {
@@ -586,17 +645,29 @@ public sealed partial class SalesViewModel : ObservableObject
         if (_cart.IsEmpty && Customer is null)
             _cartStore.Clear();
         else
-            _cartStore.Save(new CartSnapshot(_cart.Lines.Select(l => new CartSnapshotLine(l.Item, l.Qty)).ToList(), Customer));
+            _cartStore.Save(new CartSnapshot(
+                _cart.Lines.Select(l => new CartSnapshotLine(l.Item, l.Qty)).ToList(), Customer, _pendingSaleId));
     }
+
+    private bool _restoring;
 
     private void RestoreCart()
     {
         if (_cartStore.Load() is not { } snapshot || snapshot.Lines.Count == 0)
             return;
 
-        _cart.Restore(snapshot.Lines.Select(l => new CartLine(l.Item, l.Qty)));
-        Customer = snapshot.Customer;
-        CartChanged(_cart.Lines.Count - 1);
+        _restoring = true;
+        try
+        {
+            _pendingSaleId = snapshot.PendingSaleId;
+            _cart.Restore(snapshot.Lines.Select(l => new CartLine(l.Item, l.Qty)));
+            Customer = snapshot.Customer;
+            CartChanged(_cart.Lines.Count - 1);
+        }
+        finally
+        {
+            _restoring = false;
+        }
         StatusMessage = "Keranjang sebelumnya dipulihkan.";
     }
 

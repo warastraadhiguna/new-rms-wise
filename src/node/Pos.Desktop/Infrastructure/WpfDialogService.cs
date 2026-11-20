@@ -85,6 +85,11 @@ public sealed class WpfDialogService(INodeApi api) : IDialogService
         return Show(new PickerDialog(), vm) ? vm.Result as CustomerItem : null;
     }
 
+    public SaleResult? ShowPayment(PaymentViewModel payment) =>
+        Show(new PaymentDialog(), payment) ? payment.Result : null;
+
+    public void ShowSaleResult(SaleResult result) => Show(new SaleResultDialog(), new SaleResultViewModel(result));
+
     private static bool Show(Window window, object viewModel)
     {
         window.DataContext = viewModel;

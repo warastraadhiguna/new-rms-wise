@@ -79,7 +79,7 @@ public class DialogUiTests
 
         query.Text = "kantong";
         DoEvents();
-        Assert.Equal(1, grid.Items.Count);
+        Assert.Single(grid.Items);
 
         PressKey(query, Key.Enter);
 

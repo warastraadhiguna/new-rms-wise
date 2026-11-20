@@ -58,7 +58,7 @@ public class SalesViewUiTests
         DoEvents();
 
         var grid = Find<DataGrid>(view, "ProductGrid");
-        Assert.Equal(1, grid.Items.Count);
+        Assert.Single(grid.Items);
         Assert.Equal("13589", ((ProductItem)grid.Items[0]).Sku);
     });
 

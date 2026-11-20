@@ -514,6 +514,96 @@ public class SalesViewModelTests
         Assert.Equal("C2", vm.Customer?.Code);
     }
 
+    // ---- F6 Bayar --------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task F6_on_an_empty_cart_does_nothing()
+    {
+        var vm = Vm();
+
+        await vm.PayCommand.ExecuteAsync(null);
+
+        Assert.Equal("Keranjang masih kosong.", vm.StatusMessage);
+        Assert.Empty(_dialogs.Payments);
+    }
+
+    [Fact]
+    public async Task F6_pays_then_shows_the_nota_clears_the_cart_and_focuses_cari()
+    {
+        _dialogs.OnPayment = p =>
+        {
+            Assert.Equal(7500m, p.GrandTotal);
+            return Samples.Saved(new CreateSaleRequest(p.SaleId, null, [], [], null, null, null, null, null), "TK01-SL-202611-000021", 7500m, 2500m);
+        };
+        var vm = Vm();
+        await Scan(vm, "13589");
+
+        await vm.PayCommand.ExecuteAsync(null);
+
+        Assert.Contains("sales-config", _api.Calls);
+        Assert.Equal("TK01-SL-202611-000021", Assert.Single(_dialogs.ShownResults).Sale.Number);
+        Assert.Empty(vm.Lines);
+        Assert.Null(_cartStore.Saved);
+        Assert.Equal("Nota TK01-SL-202611-000021 tersimpan. Kembali Rp 2.500.", vm.StatusMessage);
+        Assert.Equal("search", vm.FocusRequest?.Target);
+    }
+
+    [Fact]
+    public async Task Closing_the_payment_keeps_the_cart_and_the_same_sale_id_for_the_next_try()
+    {
+        _dialogs.OnPayment = _ => null;
+        var vm = Vm();
+        await Scan(vm, "13589");
+
+        await vm.PayCommand.ExecuteAsync(null);
+        await vm.PayCommand.ExecuteAsync(null);
+
+        Assert.Single(vm.Lines);
+        Assert.Equal(_dialogs.Payments[0].SaleId, _dialogs.Payments[1].SaleId);
+        Assert.Equal(_dialogs.Payments[0].SaleId, _cartStore.Saved?.PendingSaleId);
+    }
+
+    [Fact]
+    public async Task Changing_the_cart_after_a_failed_payment_uses_a_new_sale_id()
+    {
+        _dialogs.OnPayment = _ => null;
+        var vm = Vm();
+        await Scan(vm, "13589");
+        await vm.PayCommand.ExecuteAsync(null);
+
+        await Scan(vm, "5113");
+        await vm.PayCommand.ExecuteAsync(null);
+
+        Assert.NotEqual(_dialogs.Payments[0].SaleId, _dialogs.Payments[1].SaleId);
+    }
+
+    [Fact]
+    public async Task Pending_sale_id_survives_a_restart()
+    {
+        _dialogs.OnPayment = _ => null;
+        var vm = Vm();
+        await Scan(vm, "13589");
+        await vm.PayCommand.ExecuteAsync(null);
+
+        var restarted = Vm();
+        await restarted.PayCommand.ExecuteAsync(null);
+
+        Assert.Equal(_dialogs.Payments[0].SaleId, _dialogs.Payments[1].SaleId);
+    }
+
+    [Fact]
+    public async Task Credit_limit_warning_is_shown_in_indonesian()
+    {
+        _dialogs.OnPayment = p => Samples.Saved(new CreateSaleRequest(p.SaleId, null, [], [], null, null, null, null, null),
+            "TK01-SL-202611-000022", 7500m, 0m, new SaleWarningInfo("credit_limit_exceeded", "Customer credit exceeds the limit."));
+        var vm = Vm();
+        await Scan(vm, "13589");
+
+        await vm.PayCommand.ExecuteAsync(null);
+
+        Assert.Equal("Kredit pelanggan melebihi limit.", vm.WarningMessage);
+    }
+
     [Fact]
     public void Clearing_the_member_box_removes_the_customer()
     {

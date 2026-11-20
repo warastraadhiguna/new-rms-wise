@@ -102,7 +102,7 @@ public sealed class SaleService(
               ?? throw ApiException.Unprocessable("unknown_customer", $"Customer {customerId} does not exist.")
             : null;
 
-        var settings = await LoadSettingsAsync(c, tx, node.BranchId, ct);
+        var settings = await SaleSettings.LoadAsync(c, tx, node.BranchId, ct);
         var methods = await ResolvePaymentMethodsAsync(c, tx, payments, ct);
         var locationId = await ResolveLocationAsync(c, tx, node, request.LocationId, ct);
         var soldAt = clock.GetUtcNow().UtcDateTime;
@@ -342,38 +342,6 @@ public sealed class SaleService(
         };
     }
 
-    private static async Task<SaleSettings> LoadSettingsAsync(MySqlConnection c, MySqlTransaction tx, Guid branchId, CancellationToken ct)
-    {
-        // Branch row first, then the global row (branch_id NULL).
-        var rows = await c.QueryAsync<(string Key, string Value)>(new CommandDefinition(
-            """
-            SELECT setting_key, CAST(setting_value AS CHAR) FROM settings
-            WHERE setting_key IN ('rounding.cash_step', 'rounding.cash_mode', 'currency.decimals')
-              AND deleted_at IS NULL AND (branch_id = @branchId OR branch_id IS NULL)
-            ORDER BY branch_id IS NULL
-            """, new { branchId }, tx, cancellationToken: ct));
-        var values = rows.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.First().Value);
-
-        var step = values.TryGetValue("rounding.cash_step", out var s) ? JsonDecimal(s) : 0m;
-        var mode = values.TryGetValue("rounding.cash_mode", out var m) ? CashRoundingModes.Parse(JsonString(m)) : CashRoundingMode.Nearest;
-        var decimals = values.TryGetValue("currency.decimals", out var d) ? (int)JsonDecimal(d) : Rupiah.DefaultCurrencyDecimals;
-        return new SaleSettings(new CashRoundingSettings(step, mode), decimals);
-    }
-
-    private static decimal JsonDecimal(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.ValueKind == JsonValueKind.String
-            ? decimal.Parse(doc.RootElement.GetString()!, NumberStyles.Number, CultureInfo.InvariantCulture)
-            : doc.RootElement.GetDecimal();
-    }
-
-    private static string JsonString(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.GetString() ?? "";
-    }
-
     /// <summary>Local view only: credit of non-voided sales minus receivable payments recorded at this node.</summary>
     private static Task<decimal> OutstandingCreditAsync(MySqlConnection c, MySqlTransaction tx, Guid customerId, CancellationToken ct) =>
         Customers.CustomerCredit.OutstandingAsync(c, tx, customerId, ct);
@@ -432,7 +400,6 @@ public sealed class SaleService(
             payments);
     }
 
-    private sealed record SaleSettings(CashRoundingSettings Rounding, int CurrencyDecimals);
 
     private sealed record CustomerRow(decimal? CreditLimit, short? PaymentTermDays);
 

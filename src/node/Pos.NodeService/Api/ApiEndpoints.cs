@@ -61,6 +61,11 @@ public static class ApiEndpoints
             .AddEndpointFilter<DeviceFilter>()
             .RequireAuthorization(Permissions.SaleCreate);
 
+        // Payment dialog: methods, cash rounding, currency precision, the user's discount limit.
+        api.MapGet("/sales/config", (SalesConfigService service, ClaimsPrincipal user, CancellationToken ct) =>
+                service.GetAsync(PermissionSet.FromNames(user.FindAll(TokenService.PermissionClaim).Select(c => c.Value)), ct))
+            .RequireAuthorization(Permissions.SaleCreate);
+
         api.MapGet("/products/search", (string? q, ProductSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
             .RequireAuthorization(Permissions.SaleCreate);
         api.MapGet("/products/{productId:guid}/units", (Guid productId, ProductSearchService service, CancellationToken ct) =>

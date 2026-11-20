@@ -25,4 +25,9 @@
     <ProjectReference Include="..\Pos.Desktop\Pos.Desktop.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Responses captured from a real Node Service (dev data), to check the client's JSON contract. -->
+    <None Include="Contracts\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

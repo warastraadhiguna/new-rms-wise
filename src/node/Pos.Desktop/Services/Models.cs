@@ -72,6 +72,41 @@ public sealed record CartCancellationLine(Guid ProductUnitId, decimal Qty, decim
 
 public sealed record CartCancellationResult(Guid Id, string Number, string Reason, decimal TotalAmount);
 
+public sealed record PaymentMethodInfo(Guid Id, string Code, string Name, bool IsCash, bool IsCredit);
+
+/// <summary>From /sales/config: what the payment dialog needs to compute the same totals as the server.</summary>
+/// <param name="DiscountMaxPercent">The cashier's discount limit without a supervisor; null = no limit.</param>
+public sealed record SalesConfig(
+    IReadOnlyList<PaymentMethodInfo> PaymentMethods,
+    decimal CashRoundingStep,
+    string CashRoundingMode,
+    int CurrencyDecimals,
+    decimal? DiscountMaxPercent);
+
+public sealed record SaleLineRequest(Guid ProductUnitId, decimal Qty);
+
+public sealed record SalePaymentRequest(string Method, decimal Amount, string? Reference);
+
+/// <param name="Id">UUID v7 created here; the same id is sent again after a network failure.</param>
+public sealed record CreateSaleRequest(
+    Guid Id,
+    Guid? CustomerId,
+    IReadOnlyList<SaleLineRequest> Lines,
+    IReadOnlyList<SalePaymentRequest> Payments,
+    string? Notes,
+    decimal? DiscountPct,
+    decimal? DiscountAmount,
+    string? SupervisorUsername,
+    string? SupervisorPassword);
+
+public sealed record SaleSummary(
+    Guid Id, string Number, decimal Subtotal, decimal DiscountAmount, decimal RoundingAmount, decimal Total,
+    decimal Change, decimal CreditAmount);
+
+public sealed record SaleWarningInfo(string Code, string Message);
+
+public sealed record SaleResult(SaleSummary Sale, IReadOnlyList<SaleWarningInfo> Warnings, bool Replayed);
+
 /// <summary>Node Service calls used by the cashier screens.</summary>
 public interface INodeApi
 {
@@ -93,6 +128,10 @@ public interface INodeApi
 
     Task<CartCancellationResult> CancelCartAsync(
         Guid id, string reason, decimal totalAmount, IReadOnlyList<CartCancellationLine> lines, CancellationToken ct = default);
+
+    Task<SalesConfig> GetSalesConfigAsync(CancellationToken ct = default);
+
+    Task<SaleResult> CreateSaleAsync(CreateSaleRequest request, CancellationToken ct = default);
 }
 
 public sealed record SupervisorCredentials(string Username, string Password);
@@ -117,6 +156,12 @@ public interface IDialogService
     ProductItem? PickUnit(string productName, IReadOnlyList<ProductItem> units, Guid currentUnitId);
 
     CustomerItem? PickCustomer(string initialQuery);
+
+    /// <summary>F6 "Bayar": the payment dialog; returns the saved sale, or null when closed without saving.</summary>
+    SaleResult? ShowPayment(ViewModels.PaymentViewModel payment);
+
+    /// <summary>After a successful sale: nota number and change, shown large.</summary>
+    void ShowSaleResult(SaleResult result);
 }
 
 /// <summary>Switches between the top-level windows.</summary>

@@ -6,7 +6,11 @@ using Pos.Shared.Sync;
 namespace Pos.Desktop.Services;
 
 /// <summary>Unpaid cart saved after every change, to survive a crash or power cut.</summary>
-public sealed record CartSnapshot(IReadOnlyList<CartSnapshotLine> Lines, CustomerItem? Customer);
+/// <param name="PendingSaleId">
+/// Sale id of a payment that was sent but not confirmed (network failure, crash). Paying the same cart again
+/// reuses it, so the server returns the stored sale instead of creating a second one. Any cart change clears it.
+/// </param>
+public sealed record CartSnapshot(IReadOnlyList<CartSnapshotLine> Lines, CustomerItem? Customer, Guid? PendingSaleId = null);
 
 public sealed record CartSnapshotLine(CartItem Item, decimal Qty);
 
