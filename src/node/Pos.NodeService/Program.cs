@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration.Json;
 using MySqlConnector;
 using Pos.NodeService.Api;
 using Pos.NodeService.Data;
+using Pos.NodeService.Sales;
 using Pos.NodeService.Shifts;
 using Pos.NodeService.Dev;
 using Pos.NodeService.Health;
@@ -44,6 +45,8 @@ builder.Services.AddSingleton(sp => new NodeIdentity(
 builder.Services.AddSingleton<TransactionRunner>();
 builder.Services.AddSingleton(sp => new StockPostingService(sp.GetRequiredService<TransactionRunner>()));
 builder.Services.AddSingleton<ShiftService>();
+builder.Services.AddSingleton(sp => new SaleService(
+    sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<NodeIdentity>(), sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<DevSeeder>(sp => new DevSeeder(
     sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("Pos.DevSeed")));

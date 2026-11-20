@@ -1,4 +1,5 @@
 using Pos.NodeService.Nodes;
+using Pos.Shared.Sales;
 using Pos.Shared.Units;
 
 namespace Pos.NodeService.Api;
@@ -36,6 +37,10 @@ public sealed class ApiExceptionFilter : IEndpointFilter
         catch (ApiException ex)
         {
             return Problem(ex.Status, ex.Code, ex.Message, ex.Extra);
+        }
+        catch (SaleValidationException ex)
+        {
+            return Problem(StatusCodes.Status422UnprocessableEntity, ex.Code, ex.Message);
         }
         catch (InvalidQuantityException ex)
         {

@@ -55,6 +55,64 @@ public sealed class DatabaseFixture : IAsyncLifetime
         return id;
     }
 
+    /// <summary>
+    /// A product sold in PCS (conversion 1) with a barcode, a default price (plus optional wholesale tiers)
+    /// and optional opening stock per expiry date in the sellable DISPLAY location.
+    /// </summary>
+    public async Task<TestProduct> CreateSellableProductAsync(
+        decimal price, bool trackExpiry = false,
+        (DateOnly? Expiry, decimal Qty)[]? stock = null,
+        (decimal MinQty, decimal Price)[]? tiers = null)
+    {
+        var productId = await CreateProductAsync(trackExpiry);
+        var productUnitId = Guid.CreateVersion7();
+        var barcode = "TB" + productUnitId.ToString("N")[..16];
+        var effectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        await using (var connection = await Factory.OpenAsync())
+        {
+            await connection.ExecuteAsync(
+                "INSERT INTO product_units (id, product_id, unit_id, conversion, is_default_sale) VALUES (@productUnitId, @productId, @UnitId, 1, 1)",
+                new { productUnitId, productId, UnitId });
+            await connection.ExecuteAsync("INSERT INTO product_barcodes (id, product_unit_id, barcode) VALUES (@id, @productUnitId, @barcode)",
+                new { id = Guid.CreateVersion7(), productUnitId, barcode });
+            foreach (var (minQty, tierPrice) in new[] { (1m, price) }.Concat(tiers ?? []))
+            {
+                await connection.ExecuteAsync(
+                    """
+                    INSERT INTO prices (id, product_unit_id, branch_id, price, min_qty, effective_from, created_by)
+                    VALUES (@id, @productUnitId, NULL, @tierPrice, @minQty, @effectiveFrom, @AdminId)
+                    """,
+                    new { id = Guid.CreateVersion7(), productUnitId, tierPrice, minQty, effectiveFrom, Seed.AdminId });
+            }
+        }
+
+        if (stock is { Length: > 0 })
+        {
+            var docId = Guid.CreateVersion7();
+            await new Pos.NodeService.Stock.StockPostingService(Factory).PostAsync(stock.Select(s =>
+                new Pos.NodeService.Stock.StockMovement(
+                    new Pos.Shared.Stock.StockDocumentLine(NodeId, LocationA, productId, Pos.Shared.Stock.StockDocTypes.Adjustment,
+                        docId, Guid.CreateVersion7(), DateTime.UtcNow),
+                    Pos.Shared.Stock.StockDirection.In, s.Qty, s.Expiry)).ToList());
+        }
+
+        return new TestProduct(productId, productUnitId, barcode);
+    }
+
+    public async Task<Guid> CreateCustomerAsync(decimal? creditLimit, short? paymentTermDays = 14)
+    {
+        var id = Guid.CreateVersion7();
+        await using var connection = await Factory.OpenAsync();
+        await connection.ExecuteAsync(
+            """
+            INSERT INTO contacts (id, code, is_customer, name, credit_limit, payment_term_days)
+            VALUES (@id, @code, 1, 'Test customer', @creditLimit, @paymentTermDays)
+            """,
+            new { id, code = "TC" + id.ToString("N")[..16], creditLimit, paymentTermDays });
+        return id;
+    }
+
     /// <summary>A fresh ACTIVE device of node TK01, so tests never share open shifts.</summary>
     public async Task<Guid> CreateDeviceAsync(string status = "ACTIVE", Guid? nodeId = null)
     {
@@ -82,6 +140,8 @@ public sealed class DatabaseFixture : IAsyncLifetime
     }
 
 }
+
+public sealed record TestProduct(Guid ProductId, Guid ProductUnitId, string Barcode);
 
 [CollectionDefinition(Name)]
 public sealed class DatabaseCollection : ICollectionFixture<DatabaseFixture>

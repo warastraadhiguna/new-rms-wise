@@ -1,3 +1,4 @@
+using Pos.NodeService.Sales;
 using Pos.NodeService.Shifts;
 
 namespace Pos.NodeService.Api;
@@ -16,6 +17,13 @@ public static class ApiEndpoints
         });
         shifts.MapPost("/close", async (CloseShiftRequest request, ShiftService service, CancellationToken ct) =>
             Results.Ok(await service.CloseAsync(request, ct)));
+
+        // 201 when created, 200 when the same sale id was already stored (idempotent retry from the client).
+        api.MapPost("/sales", async (CreateSaleRequest request, SaleService service, CancellationToken ct) =>
+        {
+            var result = await service.CreateAsync(request, ct);
+            return result.Replayed ? Results.Ok(result) : Results.Created($"/api/v1/sales/{result.Sale.Id}", result);
+        });
 
         return app;
     }
