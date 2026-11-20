@@ -1,0 +1,5 @@
+{
+  "ConnectionStrings": {
+    "PosTest": "Server=localhost;Port=3306;Database=pos_test;User=pos_test;Password=change-me"
+  }
+}
