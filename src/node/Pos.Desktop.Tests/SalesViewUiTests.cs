@@ -222,6 +222,98 @@ public class SalesViewUiTests
     });
 
     [Fact]
+    public void Stok_column_shows_larger_units_as_whole_units_plus_base_units() => WithForm((view, _) =>
+    {
+        _api.Catalog.Clear();
+        _api.Catalog.AddRange([
+            Samples.Product(Samples.AmplopId, "13589", "Amplop", 7500m, stock: 38m),
+            Samples.Product(Samples.AmplopId, "13589", "Amplop", 70000m, unit: "PAK", conversion: 10m, stock: 38m),
+            Samples.Product(Samples.KantongId, "5113", "Kantong", 4500m, unit: "BOX", conversion: 24m, stock: -26m),
+        ]);
+        Toggle(Find<CheckBox>(view, "ShowStockBox"));
+
+        Find<TextBox>(view, "SearchBox").Text = "a";
+        DoEvents();
+        var grid = Find<DataGrid>(view, "ProductGrid");
+        grid.UpdateLayout();
+
+        var stockColumn = grid.Columns.Single(c => (string)c.Header == "Stok");
+        var cells = grid.Items.Cast<ProductItem>()
+            .Select(item => ((TextBlock)stockColumn.GetCellContent(item)).Text).ToList();
+        Assert.Equal(["38", "3 PAK 8 PCS", "-1 BOX 2 PCS"], cells);
+    });
+
+    [Fact]
+    public void Edge_button_hides_the_data_panel_widens_transaksi_and_is_remembered() => WithForm((view, vm) =>
+    {
+        var transaction = Find<GroupBox>(view, "TransactionGroup");
+        var toggle = Find<Button>(view, "DataPanelToggle");
+        var wideBefore = transaction.ActualWidth;
+        Assert.Equal("◀", toggle.Content);
+
+        Click(toggle);
+        view.UpdateLayout();
+
+        Assert.False(vm.IsDataPanelVisible);
+        Assert.Equal(Visibility.Collapsed, Find<DataGrid>(view, "ProductGrid").Visibility);
+        Assert.Equal(Visibility.Collapsed, Find<GroupBox>(view, "ViewOptionsGroup").Visibility);
+        Assert.True(Find<TextBox>(view, "SearchBox").IsVisible);     // scanning keeps working
+        Assert.True(Find<TextBox>(view, "MemberBox").IsVisible);
+        Assert.True(transaction.ActualWidth > wideBefore + 100, $"Transaksi {wideBefore} -> {transaction.ActualWidth}");
+        Assert.Equal("▶", toggle.Content);
+        Assert.False(_viewStore.Settings.ShowDataPanel);
+
+        Click(toggle);
+        view.UpdateLayout();
+
+        Assert.True(vm.IsDataPanelVisible);
+        Assert.Equal(Visibility.Visible, Find<DataGrid>(view, "ProductGrid").Visibility);
+        Assert.Equal(wideBefore, transaction.ActualWidth, precision: 0);
+        Assert.True(_viewStore.Settings.ShowDataPanel);
+    });
+
+    [Fact]
+    public void F3_toggles_the_panel_and_keeps_focus_in_cari() => WithForm((view, vm) =>
+    {
+        var search = Find<TextBox>(view, "SearchBox");
+        Assert.Contains(view.InputBindings.OfType<KeyBinding>(), b => b.Key == Key.F3 && ReferenceEquals(b.Command, vm.ToggleDataPanelCommand));
+
+        PressKey(search, Key.F3);
+        Assert.False(vm.IsDataPanelVisible);
+        Assert.True(HasFocus(search));
+
+        PressKey(search, Key.F3);
+        Assert.True(vm.IsDataPanelVisible);
+    });
+
+    [Fact]
+    public void With_the_panel_hidden_F1_opens_the_search_popup_and_scanning_still_adds() => WithForm((view, vm) =>
+    {
+        PressKey(Find<TextBox>(view, "SearchBox"), Key.F3);
+        _dialogs.ProductToPick = Samples.Kantong;
+
+        PressKey(Find<TextBox>(view, "SearchBox"), Key.F1);
+        Scan(view, "13589");
+
+        Assert.Contains(_dialogs.Asked, a => a.StartsWith("pick-product:", StringComparison.Ordinal));
+        Assert.Equal(["5113", "13589"], vm.Lines.Select(l => l.Code));
+        Assert.Equal("12.000", Find<TextBlock>(view, "TotalText").Text);
+    });
+
+    [Fact]
+    public void Hidden_panel_state_is_restored_when_the_form_opens_again()
+    {
+        _viewStore.Settings = new SalesViewSettings(ShowDataPanel: false);
+
+        WithForm((view, vm) =>
+        {
+            Assert.False(vm.IsDataPanelVisible);
+            Assert.Equal(Visibility.Collapsed, Find<DataGrid>(view, "ProductGrid").Visibility);
+            Assert.Equal("▶", Find<Button>(view, "DataPanelToggle").Content);
+        });
+    }
+
+    [Fact]
     public void Stock_warning_is_shown_under_the_form() => WithForm((view, _) =>
     {
         _api.Catalog.Add(Samples.Product(Guid.CreateVersion7(), "LOW", "Barang stok tipis", 1000m, stock: 1m));

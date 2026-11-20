@@ -23,14 +23,15 @@ public interface ICartStore
     void Clear();
 }
 
-/// <summary>"Atur Tampilan": optional columns of the product grid (RMS 2 defaults: only Satuan).</summary>
+/// <summary>"Atur Tampilan": optional columns of the product grid (RMS 2 defaults: only Satuan), and whether the Data panel is shown (F3).</summary>
 public sealed record SalesViewSettings(
     bool ShowBrand = false,
     bool ShowShelf = false,
     bool ShowStock = false,
     bool ShowCategory = false,
     bool ShowDiscountPrice = false,
-    bool ShowUnit = true);
+    bool ShowUnit = true,
+    bool ShowDataPanel = true);
 
 public interface IViewSettingsStore
 {

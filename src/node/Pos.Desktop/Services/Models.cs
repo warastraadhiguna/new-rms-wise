@@ -43,9 +43,15 @@ public sealed record ProductItem(
     IReadOnlyList<PriceTierInfo> PriceTiers,
     decimal StockBaseQty,
     decimal StockQty,
-    string MatchedBy)
+    string MatchedBy,
+    string BaseUnitCode,
+    bool BaseAllowDecimal)
 {
     public bool IsExactMatch => MatchedBy is "barcode" or "sku";
+
+    /// <summary>"Stok" column: plain number in the base unit, "1 BOX 14 PCS" in a larger unit.</summary>
+    public string StockText => Pos.Shared.Units.StockDisplay.Format(
+        StockBaseQty, UnitCode, Conversion, string.IsNullOrEmpty(BaseUnitCode) ? UnitCode : BaseUnitCode, BaseAllowDecimal);
 
     public Pos.Shared.Sales.CartItem ToCartItem() => new(
         ProductId, ProductUnitId, Sku, Name, UnitCode, Conversion, AllowDecimal, AllowQtyMultiplier,

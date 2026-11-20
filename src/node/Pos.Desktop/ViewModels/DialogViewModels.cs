@@ -67,7 +67,8 @@ public sealed partial class SaleResultViewModel(Services.SaleResult result) : Di
 
 /// <param name="Path">Property of the item shown in this column.</param>
 /// <param name="Format">"money" or "qty" for Indonesian number formatting, null for text.</param>
-public sealed record PickerColumn(string Header, string Path, double Width, string? Format = null);
+/// <param name="Right">Right-align text without a number format (e.g. "1 BOX 14 PCS").</param>
+public sealed record PickerColumn(string Header, string Path, double Width, string? Format = null, bool Right = false);
 
 /// <summary>
 /// A list to pick from, optionally searchable: F1 product search, unit choice, member search.

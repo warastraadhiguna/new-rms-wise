@@ -171,3 +171,17 @@ public static class VisualTreeSearch
         }
     }
 }
+
+/// <summary>true → <see cref="WhenTrue"/>, false → <see cref="WhenFalse"/> (column widths that follow a panel toggle).</summary>
+public sealed class GridLengthWhenTrueConverter : IValueConverter
+{
+    public GridLength WhenTrue { get; set; } = new(1, GridUnitType.Star);
+
+    public GridLength WhenFalse { get; set; } = GridLength.Auto;
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? WhenTrue : WhenFalse;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}

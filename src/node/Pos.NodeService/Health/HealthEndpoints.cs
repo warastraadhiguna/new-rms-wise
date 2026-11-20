@@ -1,13 +1,22 @@
 using Pos.NodeService.Data;
 using Pos.NodeService.Nodes;
+using Pos.NodeService.Stock;
 
 namespace Pos.NodeService.Health;
 
 public static class HealthEndpoints
 {
+    /// <summary>At most this many differing buckets are listed in /health (the log has up to 100).</summary>
+    public const int MaxListedMismatches = 20;
+
+    /// <summary>
+    /// status: "ok"; "warning" (service works but the stock integrity check found differences or failed);
+    /// "degraded" with HTTP 503 when the database or the node row is unavailable.
+    /// </summary>
     public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilder app, ServerVersionCheckResult server)
     {
-        app.MapGet("/health", async (DbConnectionFactory connections, DatabaseMigrator migrator, NodeIdentity nodeIdentity, CancellationToken ct) =>
+        app.MapGet("/health", async (DbConnectionFactory connections, DatabaseMigrator migrator, NodeIdentity nodeIdentity,
+            StockIntegrityStatus integrity, CancellationToken ct) =>
         {
             object database;
             var healthy = true;
@@ -42,10 +51,40 @@ public static class HealthEndpoints
                 node = new { Status = "not_found", nodeIdentity.Code, Error = ex.Message };
             }
 
-            var body = new { Status = healthy ? "ok" : "degraded", Utc = DateTime.UtcNow, Database = database, Node = node };
+            var (stockStatus, stock) = StockIntegrity(integrity);
+            var status = !healthy ? "degraded" : stockStatus is "warning" or "error" ? "warning" : "ok";
+
+            var body = new { Status = status, Utc = DateTime.UtcNow, Database = database, Node = node, StockIntegrity = stock };
             return healthy ? Results.Ok(body) : Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
         });
 
         return app;
+    }
+
+    /// <returns>"pending" (not checked yet), "ok", "warning" (differences found) or "error" (the last check failed).</returns>
+    private static (string Status, object Body) StockIntegrity(StockIntegrityStatus integrity)
+    {
+        var report = integrity.LastReport;
+        var failedAfterReport = integrity.LastError is not null
+            && (report is null || integrity.LastErrorAt > report.CheckedAt);
+        var status = failedAfterReport ? "error"
+            : report is null ? "pending"
+            : report.IsConsistent ? "ok"
+            : "warning";
+
+        return (status, new
+        {
+            Status = status,
+            CheckedAt = report?.CheckedAt,
+            BalanceRows = report?.BalanceRows,
+            MismatchCount = report?.MismatchCount,
+            Mismatches = report?.Mismatches.Take(MaxListedMismatches).Select(m => new
+            {
+                m.LocationId, m.LocationCode, m.ProductId, m.Sku, m.ExpiryDate, m.BalanceQty, m.LedgerQty, m.Difference,
+                m.BalanceRowExists,
+            }),
+            Error = failedAfterReport ? integrity.LastError : null,
+            ErrorAt = failedAfterReport ? integrity.LastErrorAt : null,
+        });
     }
 }

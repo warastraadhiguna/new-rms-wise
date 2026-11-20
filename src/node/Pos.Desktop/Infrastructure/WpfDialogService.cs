@@ -17,7 +17,7 @@ public sealed class WpfDialogService(INodeApi api) : IDialogService
         new("Nama Barang", nameof(ProductItem.Name), 0),
         new("Satuan", nameof(ProductItem.UnitCode), 70),
         new("Harga Jual", nameof(ProductItem.Price), 90, "money"),
-        new("Stok", nameof(ProductItem.StockQty), 70, "qty"),
+        new("Stok", nameof(ProductItem.StockText), 120, Right: true),
         new("Merek", nameof(ProductItem.Brand), 100),
     ];
 

@@ -51,6 +51,10 @@ public class ContractTests
         Assert.Contains(water.PriceTiers, t => t.MinQty == 12m);
         Assert.Equal(["PCS", "BOX"], units.Select(u => u.UnitCode));
         Assert.Equal(24m, units[1].Conversion);
+        Assert.Equal("PCS", units[1].BaseUnitCode);
+        Assert.False(units[1].BaseAllowDecimal);
+        Assert.Equal("45", units[0].StockText);
+        Assert.Equal("1 BOX 21 PCS", units[1].StockText);
     }
 
     [Fact]

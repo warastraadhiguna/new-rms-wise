@@ -135,7 +135,7 @@ public static class PickerColumnsBehavior
                 Binding = binding,
                 Width = column.Width > 0 ? new DataGridLength(column.Width) : new DataGridLength(1, DataGridLengthUnitType.Star),
             };
-            if (column.Format is not null)
+            if (column.Format is not null || column.Right)
             {
                 var style = new Style(typeof(TextBlock));
                 style.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right));

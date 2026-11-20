@@ -45,6 +45,9 @@ builder.Services.AddSingleton(sp => new NodeIdentity(
     sp.GetRequiredService<IConfiguration>()["Node:Code"] ?? ""));
 builder.Services.AddSingleton<TransactionRunner>();
 builder.Services.AddSingleton(sp => new StockPostingService(sp.GetRequiredService<TransactionRunner>()));
+builder.Services.AddSingleton<StockIntegrityStatus>();
+builder.Services.AddSingleton<StockIntegrityService>();
+builder.Services.AddHostedService<StockIntegrityWorker>();
 builder.Services.AddPosAuth();
 builder.Services.AddSingleton<ShiftService>();
 builder.Services.AddSingleton(sp => new SaleService(

@@ -220,10 +220,12 @@ public static class Samples
     public static readonly Guid VoucherId = Guid.Parse("01930000-0000-7000-8000-00000000c001");
 
     public static ProductItem Product(Guid productId, string sku, string name, decimal price, string unit = "PCS",
-        decimal conversion = 1m, bool allowMultiplier = true, decimal stock = 100m, string? barcode = null, Guid? unitId = null) =>
+        decimal conversion = 1m, bool allowMultiplier = true, decimal stock = 100m, string? barcode = null, Guid? unitId = null,
+        string? baseUnit = null) =>
         new(productId, unitId ?? Guid.CreateVersion7(), sku, name, barcode ?? "899" + sku, unit, unit, conversion,
             AllowDecimal: false, AllowQtyMultiplier: allowMultiplier, TrackExpiry: false, "Merek X", "Jenis Y", "Rak A",
-            price, null, [new PriceTierInfo(1m, price)], stock, stock / conversion, "name");
+            price, null, [new PriceTierInfo(1m, price)], stock, stock / conversion, "name",
+            baseUnit ?? (conversion == 1m ? unit : "PCS"), BaseAllowDecimal: false);
 
     public static readonly ProductItem Amplop = Product(AmplopId, "13589", "2023_amplop lebaran karakter", 7500m);
     public static readonly ProductItem AmplopPak = Product(AmplopId, "13589", "2023_amplop lebaran karakter", 70000m, unit: "PAK", conversion: 10m);

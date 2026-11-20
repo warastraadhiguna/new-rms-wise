@@ -16,6 +16,8 @@ public sealed record PriceTierDto(decimal MinQty, decimal Price);
 /// <param name="DiscountPrice">"Harga Diskon": price after promotions; null until promotions exist (TODO).</param>
 /// <param name="StockQty">Stock expressed in this unit (base qty / conversion, 4 decimals).</param>
 /// <param name="MatchedBy">barcode | sku | name | unit</param>
+/// <param name="BaseUnitCode">The product's base unit (stock is kept in it), e.g. PCS.</param>
+/// <param name="BaseAllowDecimal"><c>units.allow_decimal</c> of the base unit (KG: true).</param>
 public sealed record ProductSearchItem(
     Guid ProductId,
     Guid ProductUnitId,
@@ -36,7 +38,9 @@ public sealed record ProductSearchItem(
     IReadOnlyList<PriceTierDto> PriceTiers,
     decimal StockBaseQty,
     decimal StockQty,
-    string MatchedBy);
+    string MatchedBy,
+    string BaseUnitCode,
+    bool BaseAllowDecimal);
 
 /// <summary>
 /// Cashier product lookup: exact barcode, then exact SKU, then name (every word must occur, case-insensitive).
@@ -129,10 +133,12 @@ public sealed class ProductSearchService(DbConnectionFactory connections, NodeId
                    u.code AS UnitCode, u.name AS UnitName, pu.conversion AS Conversion, u.allow_decimal AS AllowDecimal,
                    p.allow_qty_multiplier AS AllowQtyMultiplier, p.track_expiry AS TrackExpiry,
                    b.name AS Brand, cat.name AS Category, p.shelf_location AS ShelfLocation,
+                   bu.code AS BaseUnitCode, bu.allow_decimal AS BaseAllowDecimal,
                    (SELECT MIN(pb.barcode) FROM product_barcodes pb WHERE pb.product_unit_id = pu.id AND pb.deleted_at IS NULL) AS FirstBarcode
             FROM product_units pu
             JOIN products p ON p.id = pu.product_id
             JOIN units u ON u.id = pu.unit_id
+            JOIN units bu ON bu.id = p.base_unit_id
             LEFT JOIN brands b ON b.id = p.brand_id
             LEFT JOIN categories cat ON cat.id = p.category_id
             WHERE pu.id IN @unitIds
@@ -170,7 +176,7 @@ public sealed class ProductSearchService(DbConnectionFactory connections, NodeId
             return new ProductSearchItem(r.ProductId, r.ProductUnitId, r.Sku, r.Name, m.Barcode ?? r.FirstBarcode,
                 r.UnitCode, r.UnitName, r.Conversion, r.AllowDecimal, r.AllowQtyMultiplier, r.TrackExpiry, r.Brand, r.Category,
                 r.ShelfLocation, PriceResolver.Resolve(candidates, node.BranchId, now, 1m), DiscountPrice: null, tiers, baseQty,
-                r.Conversion > 0 ? StorageScale.Round(baseQty / r.Conversion) : 0m, m.By);
+                r.Conversion > 0 ? StorageScale.Round(baseQty / r.Conversion) : 0m, m.By, r.BaseUnitCode, r.BaseAllowDecimal);
         }).ToList();
     }
 
@@ -183,5 +189,5 @@ public sealed class ProductSearchService(DbConnectionFactory connections, NodeId
     private sealed record UnitRow(
         Guid ProductUnitId, Guid ProductId, string Sku, string Name, string UnitCode, string UnitName, decimal Conversion,
         bool AllowDecimal, bool AllowQtyMultiplier, bool TrackExpiry, string? Brand, string? Category, string? ShelfLocation,
-        string? FirstBarcode);
+        string BaseUnitCode, bool BaseAllowDecimal, string? FirstBarcode);
 }

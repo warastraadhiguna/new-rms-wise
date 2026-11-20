@@ -19,6 +19,9 @@ public static class Permissions
     /// <summary>Supervisor: approve deleting a line from the cart.</summary>
     public const string SaleLineDelete = "sale.line.delete";
 
+    /// <summary>Admin: rebuild stock_balances from stock_ledger after the integrity check found a difference.</summary>
+    public const string StockRebuild = "stock.rebuild";
+
     /// <summary>Actions a supervisor can approve with a PIN.</summary>
     public static IReadOnlyList<string> ApprovalActions { get; } = [SaleLineDelete, SaleDiscountOverride];
 }

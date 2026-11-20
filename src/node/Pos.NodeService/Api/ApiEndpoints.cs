@@ -4,6 +4,7 @@ using Pos.NodeService.Catalog;
 using Pos.NodeService.Customers;
 using Pos.NodeService.Sales;
 using Pos.NodeService.Shifts;
+using Pos.NodeService.Stock;
 using Pos.Shared.Auth;
 
 namespace Pos.NodeService.Api;
@@ -73,6 +74,12 @@ public static class ApiEndpoints
             .RequireAuthorization(Permissions.SaleCreate);
         api.MapGet("/customers/search", (string? q, CustomerSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
             .RequireAuthorization(Permissions.SaleCreate);
+
+        // Stock integrity (admin). The nightly check never repairs; a person reviews and then rebuilds.
+        var stockAdmin = api.MapGroup("/admin/stock").RequireAuthorization(Permissions.StockRebuild);
+        stockAdmin.MapPost("/integrity-check", (StockIntegrityService service, CancellationToken ct) => service.CheckAsync(ct));
+        stockAdmin.MapPost("/rebuild-balances", (StockIntegrityService service, ClaimsPrincipal user, CancellationToken ct) =>
+            service.RebuildAsync(user.UserId(), user.FindFirstValue(TokenService.NameClaim), ct));
 
         return app;
     }

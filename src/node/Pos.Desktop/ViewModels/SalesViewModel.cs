@@ -86,6 +86,9 @@ public sealed partial class SalesViewModel : ObservableObject
     [ObservableProperty] private bool _showBrand;
     [ObservableProperty] private bool _showShelf;
     [ObservableProperty] private bool _showStock;
+
+    /// <summary>Left "Data" panel (product grid + Atur Tampilan); F3 or the edge button hides it to widen Transaksi.</summary>
+    [ObservableProperty] private bool _isDataPanelVisible = true;
     [ObservableProperty] private bool _showCategory;
     [ObservableProperty] private bool _showDiscountPrice;
     [ObservableProperty] private bool _showUnit = true;
@@ -602,6 +605,15 @@ public sealed partial class SalesViewModel : ObservableObject
     partial void OnShowCategoryChanged(bool value) => SaveViewSettings();
     partial void OnShowDiscountPriceChanged(bool value) => SaveViewSettings();
     partial void OnShowUnitChanged(bool value) => SaveViewSettings();
+    partial void OnIsDataPanelVisibleChanged(bool value) => SaveViewSettings();
+
+    /// <summary>F3 or the button on the panel edge. The search row stays, so scanning and F1 keep working.</summary>
+    [RelayCommand]
+    private void ToggleDataPanel()
+    {
+        IsDataPanelVisible = !IsDataPanelVisible;
+        RequestFocus("search");
+    }
 
     private void LoadViewSettings()
     {
@@ -613,13 +625,14 @@ public sealed partial class SalesViewModel : ObservableObject
         ShowCategory = s.ShowCategory;
         ShowDiscountPrice = s.ShowDiscountPrice;
         ShowUnit = s.ShowUnit;
+        IsDataPanelVisible = s.ShowDataPanel;
         _loadingSettings = false;
     }
 
     private void SaveViewSettings()
     {
         if (!_loadingSettings)
-            _viewStore.Save(new SalesViewSettings(ShowBrand, ShowShelf, ShowStock, ShowCategory, ShowDiscountPrice, ShowUnit));
+            _viewStore.Save(new SalesViewSettings(ShowBrand, ShowShelf, ShowStock, ShowCategory, ShowDiscountPrice, ShowUnit, IsDataPanelVisible));
     }
 
     // ---- cart bookkeeping -------------------------------------------------------------------------

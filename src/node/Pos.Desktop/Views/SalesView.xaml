@@ -10,6 +10,8 @@
     <!-- Keys follow RMS 2 "Form Penjualan". "*" (numpad or Shift+8) is handled by TextInputCommand above. -->
     <UserControl.InputBindings>
         <KeyBinding Key="F1" Command="{Binding OpenProductSearchCommand}" />
+        <!-- F3 is new (not in RMS 2): hide/show the Data panel. -->
+        <KeyBinding Key="F3" Command="{Binding ToggleDataPanelCommand}" />
         <KeyBinding Key="F6" Command="{Binding PayCommand}" />
         <KeyBinding Key="F8" Command="{Binding ChangeQtyCommand}" />
         <KeyBinding Key="Delete" Modifiers="Shift" Command="{Binding DeleteLineCommand}" />
@@ -22,6 +24,8 @@
         <infra:BindingProxy x:Key="Proxy" Data="{Binding}" />
         <infra:IndonesianNumberConverter x:Key="Number" />
         <infra:VisibleWhenTrueConverter x:Key="VisibleWhenTrue" />
+        <infra:GridLengthWhenTrueConverter x:Key="DataColumnWidth" WhenTrue="4*" WhenFalse="Auto" />
+        <infra:GridLengthWhenTrueConverter x:Key="TransactionColumnWidth" WhenTrue="6*" WhenFalse="*" />
         <infra:VisibleWhenTextConverter x:Key="VisibleWhenText" />
         <Style x:Key="Right" TargetType="TextBlock">
             <Setter Property="HorizontalAlignment" Value="Right" />
@@ -53,17 +57,19 @@
 
     <Grid Margin="10">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="4*" />
-            <ColumnDefinition Width="10" />
-            <ColumnDefinition Width="6*" />
+            <ColumnDefinition Width="{Binding IsDataPanelVisible, Converter={StaticResource DataColumnWidth}}" />
+            <ColumnDefinition Width="16" />
+            <ColumnDefinition Width="{Binding IsDataPanelVisible, Converter={StaticResource TransactionColumnWidth}}" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Left: title, member, Data (search + products), Atur Tampilan -->
-        <DockPanel Grid.Column="0">
+        <!-- Left: title, member, Data (search + products), Atur Tampilan.
+             When the Data panel is hidden only title, member and the search row stay (narrow column),
+             so scanning, the x box and F1 keep working. -->
+        <DockPanel x:Name="LeftPanel" Grid.Column="0" MinWidth="280">
             <TextBlock DockPanel.Dock="Top" Text="Form Penjualan" FontSize="24" FontWeight="Bold" Margin="0,4,0,24" />
 
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16">
@@ -108,7 +114,8 @@
                         </TextBox>
                     </DockPanel>
 
-                    <GroupBox DockPanel.Dock="Bottom" Header="Atur Tampilan" Margin="0,8,0,0" FontSize="11">
+                    <GroupBox x:Name="ViewOptionsGroup" DockPanel.Dock="Bottom" Header="Atur Tampilan" Margin="0,8,0,0" FontSize="11"
+                              Visibility="{Binding IsDataPanelVisible, Converter={StaticResource VisibleWhenTrue}}">
                         <UniformGrid Columns="3" Rows="2">
                             <CheckBox x:Name="ShowBrandBox" Content="Merek" IsChecked="{Binding ShowBrand}" Margin="2" />
                             <CheckBox x:Name="ShowShelfBox" Content="Letak" IsChecked="{Binding ShowShelf}" Margin="2" />
@@ -119,7 +126,8 @@
                         </UniformGrid>
                     </GroupBox>
 
-                    <DataGrid x:Name="ProductGrid" ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}">
+                    <DataGrid x:Name="ProductGrid" ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}"
+                              Visibility="{Binding IsDataPanelVisible, Converter={StaticResource VisibleWhenTrue}}">
                         <DataGrid.InputBindings>
                             <KeyBinding Key="Enter" Command="{Binding AddSelectedProductCommand}" />
                             <MouseBinding Gesture="LeftDoubleClick" Command="{Binding AddSelectedProductCommand}" />
@@ -135,8 +143,8 @@
                                                 Visibility="{Binding Data.ShowBrand, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
                             <DataGridTextColumn Header="Letak" Binding="{Binding ShelfLocation}" Width="60"
                                                 Visibility="{Binding Data.ShowShelf, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
-                            <DataGridTextColumn Header="Stok" Width="60" ElementStyle="{StaticResource Right}"
-                                                Binding="{Binding StockQty, Converter={StaticResource Number}, ConverterParameter=qty}"
+                            <DataGridTextColumn Header="Stok" Width="110" ElementStyle="{StaticResource Right}"
+                                                Binding="{Binding StockText}"
                                                 Visibility="{Binding Data.ShowStock, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
                             <DataGridTextColumn Header="Jenis Barang" Binding="{Binding Category}" Width="90"
                                                 Visibility="{Binding Data.ShowCategory, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
@@ -149,8 +157,26 @@
             </GroupBox>
         </DockPanel>
 
+        <!-- Small button on the panel edge (same as F3) -->
+        <Button x:Name="DataPanelToggle" Grid.Column="1" MinWidth="0" Width="14" Height="56" Padding="0" FontSize="9"
+                VerticalAlignment="Center" HorizontalAlignment="Center" Focusable="False"
+                Command="{Binding ToggleDataPanelCommand}">
+            <Button.Style>
+                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                    <Setter Property="Content" Value="◀" />
+                    <Setter Property="ToolTip" Value="Sembunyikan panel Data [F3]" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsDataPanelVisible}" Value="False">
+                            <Setter Property="Content" Value="▶" />
+                            <Setter Property="ToolTip" Value="Tampilkan panel Data [F3]" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
+
         <!-- Right: Transaksi -->
-        <GroupBox Grid.Column="2" Header="Transaksi">
+        <GroupBox x:Name="TransactionGroup" Grid.Column="2" Header="Transaksi">
             <DockPanel>
                 <Border DockPanel.Dock="Top" Background="White" BorderBrush="#C8D3E3" BorderThickness="1" Margin="0,0,0,6">
                     <TextBlock x:Name="TotalText" Text="{Binding Total, Converter={StaticResource Number}}"
