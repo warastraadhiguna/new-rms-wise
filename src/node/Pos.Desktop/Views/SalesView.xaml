@@ -56,6 +56,9 @@
         </Style>
     </UserControl.Resources>
 
+    <!-- Layout after the owner's revision: left = only the "Data" panel (product grid + Atur Tampilan);
+         right = Member and "Cari [F1] ... x [qty]" above "Transaksi" (large total, cart, buttons).
+         F3 / the edge button hides the left panel completely, so Transaksi spans the window. -->
     <Grid Margin="10">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="{Binding IsDataPanelVisible, Converter={StaticResource DataColumnWidth}}" />
@@ -63,103 +66,59 @@
             <ColumnDefinition Width="{Binding IsDataPanelVisible, Converter={StaticResource TransactionColumnWidth}}" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Left: title, member, Data (search + products), Atur Tampilan.
-             When the Data panel is hidden only title, member and the search row stay (narrow column),
-             so scanning, the x box and F1 keep working. -->
-        <DockPanel x:Name="LeftPanel" Grid.Column="0" MinWidth="280">
-            <TextBlock DockPanel.Dock="Top" Text="Form Penjualan" FontSize="24" FontWeight="Bold" Margin="0,4,0,24" />
+        <TextBlock Grid.ColumnSpan="3" Text="Form Penjualan" FontSize="24" FontWeight="Bold" Margin="0,4,0,12" />
 
-            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16">
-                <TextBlock Text="Member" VerticalAlignment="Center" Width="60" />
-                <Button x:Name="PickCustomerButton" DockPanel.Dock="Right" Content="..." MinWidth="0" Padding="6,0"
-                        Command="{Binding PickCustomerCommand}" />
-                <TextBox x:Name="MemberBox" Text="{Binding CustomerText, UpdateSourceTrigger=PropertyChanged}" Padding="2">
-                    <TextBox.InputBindings>
-                        <KeyBinding Key="Enter" Command="{Binding MemberEnterCommand}" />
-                    </TextBox.InputBindings>
-                </TextBox>
+        <!-- Left: Data (product grid + Atur Tampilan) -->
+        <GroupBox x:Name="DataPanel" Grid.Row="1" Grid.Column="0" Header="Data"
+                  Visibility="{Binding IsDataPanelVisible, Converter={StaticResource VisibleWhenTrue}}">
+            <DockPanel>
+                <GroupBox x:Name="ViewOptionsGroup" DockPanel.Dock="Bottom" Header="Atur Tampilan" Margin="0,8,0,0" FontSize="11">
+                    <UniformGrid Columns="3" Rows="2">
+                        <CheckBox x:Name="ShowBrandBox" Content="Merek" IsChecked="{Binding ShowBrand}" Margin="2" />
+                        <CheckBox x:Name="ShowShelfBox" Content="Letak" IsChecked="{Binding ShowShelf}" Margin="2" />
+                        <CheckBox x:Name="ShowStockBox" Content="Stok" IsChecked="{Binding ShowStock}" Margin="2" />
+                        <CheckBox x:Name="ShowCategoryBox" Content="Jenis Barang" IsChecked="{Binding ShowCategory}" Margin="2" />
+                        <CheckBox x:Name="ShowDiscountPriceBox" Content="Harga Diskon" IsChecked="{Binding ShowDiscountPrice}" Margin="2" />
+                        <CheckBox x:Name="ShowUnitBox" Content="Satuan" IsChecked="{Binding ShowUnit}" Margin="2" />
+                    </UniformGrid>
+                </GroupBox>
+
+                <DataGrid x:Name="ProductGrid" ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}">
+                    <DataGrid.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding AddSelectedProductCommand}" />
+                        <MouseBinding Gesture="LeftDoubleClick" Command="{Binding AddSelectedProductCommand}" />
+                    </DataGrid.InputBindings>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Kode Barang" Binding="{Binding Sku}" Width="90" />
+                        <DataGridTextColumn Header="Nama Barang" Binding="{Binding Name}" Width="*" />
+                        <DataGridTextColumn Header="Satuan" Binding="{Binding UnitCode}" Width="60"
+                                            Visibility="{Binding Data.ShowUnit, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
+                        <DataGridTextColumn Header="Harga Jual" Width="80" ElementStyle="{StaticResource Right}"
+                                            Binding="{Binding Price, Converter={StaticResource Number}}" />
+                        <DataGridTextColumn Header="Merek" Binding="{Binding Brand}" Width="80"
+                                            Visibility="{Binding Data.ShowBrand, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
+                        <DataGridTextColumn Header="Letak" Binding="{Binding ShelfLocation}" Width="60"
+                                            Visibility="{Binding Data.ShowShelf, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
+                        <DataGridTextColumn Header="Stok" Width="110" ElementStyle="{StaticResource Right}"
+                                            Binding="{Binding StockText}"
+                                            Visibility="{Binding Data.ShowStock, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
+                        <DataGridTextColumn Header="Jenis Barang" Binding="{Binding Category}" Width="90"
+                                            Visibility="{Binding Data.ShowCategory, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
+                        <DataGridTextColumn Header="Harga Diskon" Width="80" ElementStyle="{StaticResource Right}"
+                                            Binding="{Binding DiscountPrice, Converter={StaticResource Number}}"
+                                            Visibility="{Binding Data.ShowDiscountPrice, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
+                    </DataGrid.Columns>
+                </DataGrid>
             </DockPanel>
-
-            <GroupBox Header="Data">
-                <DockPanel>
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-                        <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,6,0">
-                            <Hyperlink Command="{Binding OpenProductSearchCommand}">Cari [F1]</Hyperlink>
-                        </TextBlock>
-                        <TextBox x:Name="QtyBox" DockPanel.Dock="Right" Width="56" Padding="2" TextAlignment="Left"
-                                 infra:FocusBehavior.Key="qty"
-                                 Text="{Binding QtyText, UpdateSourceTrigger=PropertyChanged}">
-                            <TextBox.Style>
-                                <Style TargetType="TextBox">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsMultiplierMode}" Value="True">
-                                            <Setter Property="Background" Value="#FFF2B3" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBox.Style>
-                            <TextBox.InputBindings>
-                                <KeyBinding Key="Enter" Command="{Binding QtyEnterCommand}" />
-                            </TextBox.InputBindings>
-                        </TextBox>
-                        <TextBlock DockPanel.Dock="Right" Text="x" VerticalAlignment="Center" Margin="6,0" />
-                        <TextBox x:Name="SearchBox" Padding="2" infra:FocusBehavior.Key="search"
-                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}">
-                            <TextBox.InputBindings>
-                                <KeyBinding Key="Enter" Command="{Binding SearchEnterCommand}" />
-                            </TextBox.InputBindings>
-                        </TextBox>
-                    </DockPanel>
-
-                    <GroupBox x:Name="ViewOptionsGroup" DockPanel.Dock="Bottom" Header="Atur Tampilan" Margin="0,8,0,0" FontSize="11"
-                              Visibility="{Binding IsDataPanelVisible, Converter={StaticResource VisibleWhenTrue}}">
-                        <UniformGrid Columns="3" Rows="2">
-                            <CheckBox x:Name="ShowBrandBox" Content="Merek" IsChecked="{Binding ShowBrand}" Margin="2" />
-                            <CheckBox x:Name="ShowShelfBox" Content="Letak" IsChecked="{Binding ShowShelf}" Margin="2" />
-                            <CheckBox x:Name="ShowStockBox" Content="Stok" IsChecked="{Binding ShowStock}" Margin="2" />
-                            <CheckBox x:Name="ShowCategoryBox" Content="Jenis Barang" IsChecked="{Binding ShowCategory}" Margin="2" />
-                            <CheckBox x:Name="ShowDiscountPriceBox" Content="Harga Diskon" IsChecked="{Binding ShowDiscountPrice}" Margin="2" />
-                            <CheckBox x:Name="ShowUnitBox" Content="Satuan" IsChecked="{Binding ShowUnit}" Margin="2" />
-                        </UniformGrid>
-                    </GroupBox>
-
-                    <DataGrid x:Name="ProductGrid" ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}"
-                              Visibility="{Binding IsDataPanelVisible, Converter={StaticResource VisibleWhenTrue}}">
-                        <DataGrid.InputBindings>
-                            <KeyBinding Key="Enter" Command="{Binding AddSelectedProductCommand}" />
-                            <MouseBinding Gesture="LeftDoubleClick" Command="{Binding AddSelectedProductCommand}" />
-                        </DataGrid.InputBindings>
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Kode Barang" Binding="{Binding Sku}" Width="90" />
-                            <DataGridTextColumn Header="Nama Barang" Binding="{Binding Name}" Width="*" />
-                            <DataGridTextColumn Header="Satuan" Binding="{Binding UnitCode}" Width="60"
-                                                Visibility="{Binding Data.ShowUnit, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
-                            <DataGridTextColumn Header="Harga Jual" Width="80" ElementStyle="{StaticResource Right}"
-                                                Binding="{Binding Price, Converter={StaticResource Number}}" />
-                            <DataGridTextColumn Header="Merek" Binding="{Binding Brand}" Width="80"
-                                                Visibility="{Binding Data.ShowBrand, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
-                            <DataGridTextColumn Header="Letak" Binding="{Binding ShelfLocation}" Width="60"
-                                                Visibility="{Binding Data.ShowShelf, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
-                            <DataGridTextColumn Header="Stok" Width="110" ElementStyle="{StaticResource Right}"
-                                                Binding="{Binding StockText}"
-                                                Visibility="{Binding Data.ShowStock, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
-                            <DataGridTextColumn Header="Jenis Barang" Binding="{Binding Category}" Width="90"
-                                                Visibility="{Binding Data.ShowCategory, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
-                            <DataGridTextColumn Header="Harga Diskon" Width="80" ElementStyle="{StaticResource Right}"
-                                                Binding="{Binding DiscountPrice, Converter={StaticResource Number}}"
-                                                Visibility="{Binding Data.ShowDiscountPrice, Source={StaticResource Proxy}, Converter={StaticResource VisibleWhenTrue}}" />
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </DockPanel>
-            </GroupBox>
-        </DockPanel>
+        </GroupBox>
 
         <!-- Small button on the panel edge (same as F3) -->
-        <Button x:Name="DataPanelToggle" Grid.Column="1" MinWidth="0" Width="14" Height="56" Padding="0" FontSize="9"
+        <Button x:Name="DataPanelToggle" Grid.Row="1" Grid.Column="1" MinWidth="0" Width="14" Height="56" Padding="0" FontSize="9"
                 VerticalAlignment="Center" HorizontalAlignment="Center" Focusable="False"
                 Command="{Binding ToggleDataPanelCommand}">
             <Button.Style>
@@ -176,52 +135,93 @@
             </Button.Style>
         </Button>
 
-        <!-- Right: Transaksi -->
-        <GroupBox x:Name="TransactionGroup" Grid.Column="2" Header="Transaksi">
-            <DockPanel>
-                <Border DockPanel.Dock="Top" Background="White" BorderBrush="#C8D3E3" BorderThickness="1" Margin="0,0,0,6">
-                    <TextBlock x:Name="TotalText" Text="{Binding Total, Converter={StaticResource Number}}"
-                               FontSize="34" FontWeight="Bold" Foreground="#7F7F7F" HorizontalAlignment="Right" Margin="8,2" />
-                </Border>
-
-                <UniformGrid DockPanel.Dock="Bottom" Columns="4" Margin="0,8,0,0">
-                    <Button x:Name="PayButton" Content="Bayar [F6]" Command="{Binding PayCommand}" Margin="2" />
-                    <Button x:Name="ChangeQtyButton" Content="Atur Jumlah [F8]" Command="{Binding ChangeQtyCommand}" Margin="2" />
-                    <Button x:Name="DeleteButton" Content="Hapus [SHF DEL]" Command="{Binding DeleteLineCommand}" Margin="2" />
-                    <Button x:Name="CancelButton" Content="Batal [F12]" Command="{Binding CancelTransactionCommand}" Margin="2" />
-                </UniformGrid>
-
-                <DataGrid x:Name="CartGrid" ItemsSource="{Binding Lines}" SelectedItem="{Binding SelectedLine}">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="No" Binding="{Binding No}" Width="40" />
-                        <DataGridTextColumn Header="Kode Barang" Binding="{Binding Code}" Width="100" />
-                        <DataGridTextColumn Header="Nama Barang" Binding="{Binding Name}" Width="*" />
-                        <DataGridTextColumn Header="QTY" Width="55" ElementStyle="{StaticResource Right}"
-                                            Binding="{Binding Qty, Converter={StaticResource Number}, ConverterParameter=qty}" />
-                        <DataGridTemplateColumn Header="Satuan" Width="80">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <DockPanel>
-                                        <Button DockPanel.Dock="Right" Content="▾" MinWidth="0" Padding="2,0" FontSize="9"
-                                                ToolTip="Ganti satuan" Focusable="False"
-                                                Command="{Binding DataContext.ChangeUnitCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}" />
-                                        <TextBlock Text="{Binding UnitCode}" VerticalAlignment="Center" Margin="2,0" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Harga" Width="80" ElementStyle="{StaticResource Right}"
-                                            Binding="{Binding Price, Converter={StaticResource Number}}" />
-                        <DataGridTextColumn Header="Sub Total" Width="95" ElementStyle="{StaticResource Right}"
-                                            Binding="{Binding SubTotal, Converter={StaticResource Number}}" />
-                    </DataGrid.Columns>
-                </DataGrid>
+        <!-- Right: Member, Cari [F1] ... x [qty], then Transaksi -->
+        <DockPanel x:Name="RightPanel" Grid.Row="1" Grid.Column="2">
+            <DockPanel x:Name="MemberRow" DockPanel.Dock="Top" Margin="0,0,0,6">
+                <TextBlock Text="Member" VerticalAlignment="Center" Width="60" />
+                <Button x:Name="PickCustomerButton" DockPanel.Dock="Right" Content="..." MinWidth="0" Padding="6,0"
+                        Command="{Binding PickCustomerCommand}" />
+                <TextBox x:Name="MemberBox" Text="{Binding CustomerText, UpdateSourceTrigger=PropertyChanged}" Padding="2">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding MemberEnterCommand}" />
+                    </TextBox.InputBindings>
+                </TextBox>
             </DockPanel>
-        </GroupBox>
+            <DockPanel x:Name="SearchRow" DockPanel.Dock="Top" Margin="0,0,0,8">
+                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,6,0">
+                    <Hyperlink Command="{Binding OpenProductSearchCommand}">Cari [F1]</Hyperlink>
+                </TextBlock>
+                <TextBox x:Name="QtyBox" DockPanel.Dock="Right" Width="56" Padding="2" TextAlignment="Left"
+                         infra:FocusBehavior.Key="qty"
+                         Text="{Binding QtyText, UpdateSourceTrigger=PropertyChanged}">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsMultiplierMode}" Value="True">
+                                    <Setter Property="Background" Value="#FFF2B3" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding QtyEnterCommand}" />
+                    </TextBox.InputBindings>
+                </TextBox>
+                <TextBlock DockPanel.Dock="Right" Text="x" VerticalAlignment="Center" Margin="6,0" />
+                <TextBox x:Name="SearchBox" Padding="2" infra:FocusBehavior.Key="search"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding SearchEnterCommand}" />
+                    </TextBox.InputBindings>
+                </TextBox>
+            </DockPanel>
+
+            <GroupBox x:Name="TransactionGroup" Header="Transaksi">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Background="White" BorderBrush="#C8D3E3" BorderThickness="1" Margin="0,0,0,6">
+                        <TextBlock x:Name="TotalText" Text="{Binding Total, Converter={StaticResource Number}}"
+                                   FontSize="34" FontWeight="Bold" Foreground="#7F7F7F" HorizontalAlignment="Right" Margin="8,2" />
+                    </Border>
+
+                    <UniformGrid DockPanel.Dock="Bottom" Columns="4" Margin="0,8,0,0">
+                        <Button x:Name="PayButton" Content="Bayar [F6]" Command="{Binding PayCommand}" Margin="2" />
+                        <Button x:Name="ChangeQtyButton" Content="Atur Jumlah [F8]" Command="{Binding ChangeQtyCommand}" Margin="2" />
+                        <Button x:Name="DeleteButton" Content="Hapus [SHF DEL]" Command="{Binding DeleteLineCommand}" Margin="2" />
+                        <Button x:Name="CancelButton" Content="Batal [F12]" Command="{Binding CancelTransactionCommand}" Margin="2" />
+                    </UniformGrid>
+
+                    <DataGrid x:Name="CartGrid" ItemsSource="{Binding Lines}" SelectedItem="{Binding SelectedLine}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="No" Binding="{Binding No}" Width="40" />
+                            <DataGridTextColumn Header="Kode Barang" Binding="{Binding Code}" Width="100" />
+                            <DataGridTextColumn Header="Nama Barang" Binding="{Binding Name}" Width="*" />
+                            <DataGridTextColumn Header="QTY" Width="55" ElementStyle="{StaticResource Right}"
+                                                Binding="{Binding Qty, Converter={StaticResource Number}, ConverterParameter=qty}" />
+                            <DataGridTemplateColumn Header="Satuan" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Content="▾" MinWidth="0" Padding="2,0" FontSize="9"
+                                                    ToolTip="Ganti satuan" Focusable="False"
+                                                    Command="{Binding DataContext.ChangeUnitCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                            <TextBlock Text="{Binding UnitCode}" VerticalAlignment="Center" Margin="2,0" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Harga" Width="80" ElementStyle="{StaticResource Right}"
+                                                Binding="{Binding Price, Converter={StaticResource Number}}" />
+                            <DataGridTextColumn Header="Sub Total" Width="95" ElementStyle="{StaticResource Right}"
+                                                Binding="{Binding SubTotal, Converter={StaticResource Number}}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </GroupBox>
+        </DockPanel>
 
         <!-- Messages under the form -->
-        <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,6,0,0">
+        <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Margin="0,6,0,0">
             <TextBlock x:Name="WarningText" Text="{Binding WarningMessage}" Foreground="#B35C00" TextWrapping="Wrap"
                        Visibility="{Binding WarningMessage, Converter={StaticResource VisibleWhenText}}" />
             <TextBlock x:Name="StatusText" Text="{Binding StatusMessage}" Foreground="Firebrick" TextWrapping="Wrap"

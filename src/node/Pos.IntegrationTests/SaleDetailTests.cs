@@ -95,8 +95,13 @@ public class SaleDetailTests(DatabaseFixture db) : IAsyncLifetime
         Assert.Equal(2300m, payment.Dec("change_given"));
 
         var receipt = sale.GetProperty("receipt");
-        Assert.Equal(["TOKO DEV", "Jl. Merdeka No. 1", "Jakarta"], receipt.GetProperty("header_lines").EnumerateArray().Select(e => e.GetString()));
-        Assert.Equal(["Terimakasih Atas Kunjungannya"], receipt.GetProperty("footer_lines").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal("TOKO DEV", receipt.Str("store_name"));
+        Assert.Equal("Jl. Merdeka No. 1", receipt.Str("address"));
+        Assert.Equal("Jakarta", receipt.Str("city"));
+        Assert.Equal("021-5550123", receipt.Str("phone"));
+        Assert.Equal("Terimakasih Atas Kunjungannya", receipt.Str("footer_1"));
+        Assert.Equal("Sampai Jumpa Kembali", receipt.Str("footer_2"));
+        Assert.False(receipt.TryGetProperty("header_lines", out _));
     }
 
     [DatabaseFact]
@@ -142,21 +147,70 @@ public class SaleDetailTests(DatabaseFixture db) : IAsyncLifetime
         await ExecAsync(
             """
             INSERT INTO settings (id, branch_id, setting_key, setting_value) VALUES
-              (@a, @BranchId, 'receipt.header_lines', '"Cabang Khusus"'),
-              (@b, @BranchId, 'receipt.footer_lines', '[]')
+              (@a, @BranchId, 'receipt.store_name', '"TOKO DEV CABANG 2"'),
+              (@b, @BranchId, 'receipt.footer_2', '""')
             """, new { a = Guid.CreateVersion7(), b = Guid.CreateVersion7(), db.BranchId });
         try
         {
             var (_, sale) = await _client.GetAsync($"/api/v1/sales/{id}", db.CashierToken());
 
             var receipt = sale.GetProperty("receipt");
-            Assert.Equal(["Cabang Khusus"], receipt.GetProperty("header_lines").EnumerateArray().Select(e => e.GetString()));
-            Assert.Empty(receipt.GetProperty("footer_lines").EnumerateArray());
+            Assert.Equal("TOKO DEV CABANG 2", receipt.Str("store_name"));
+            Assert.Equal("Jakarta", receipt.Str("city"));                                 // global value still used
+            Assert.Equal("", receipt.Str("footer_2"));                                    // branch blanked it: not printed
+            Assert.Equal("Terimakasih Atas Kunjungannya", receipt.Str("footer_1"));
         }
         finally
         {
             await ExecAsync("DELETE FROM settings WHERE branch_id = @BranchId AND setting_key LIKE 'receipt.%'", new { db.BranchId });
         }
+    }
+
+    [DatabaseFact]
+    public async Task Missing_receipt_settings_fall_back_to_the_store_name_and_the_rms2_thank_you_line()
+    {
+        var product = await db.CreateSellableProductAsync(1000m, stock: [(null, 5m)]);
+        var device = await OpenShiftAsync();
+        var id = await SellAsync(new
+        {
+            Id = Guid.CreateVersion7(),
+            Lines = new[] { new { product.ProductUnitId, Qty = 1m } },
+            Payments = new[] { new { Method = "CASH", Amount = 1000m } },
+        }, device);
+        await ExecAsync("UPDATE settings SET deleted_at = UTC_TIMESTAMP(3) WHERE setting_key LIKE 'receipt.%' AND deleted_at IS NULL", new { });
+        try
+        {
+            var (_, sale) = await _client.GetAsync($"/api/v1/sales/{id}", db.CashierToken());
+
+            var receipt = sale.GetProperty("receipt");
+            Assert.Equal("Toko Dev", receipt.Str("store_name"));
+            Assert.Equal(JsonValueKind.Null, receipt.GetProperty("address").ValueKind);
+            Assert.Equal(JsonValueKind.Null, receipt.GetProperty("phone").ValueKind);
+            Assert.Equal("Terimakasih Atas Kunjungannya", receipt.Str("footer_1"));
+            Assert.Equal(JsonValueKind.Null, receipt.GetProperty("footer_2").ValueKind);
+        }
+        finally
+        {
+            await ExecAsync(
+                "UPDATE settings SET deleted_at = NULL WHERE setting_key IN ('receipt.store_name','receipt.address','receipt.city','receipt.phone','receipt.footer_1','receipt.footer_2')",
+                new { });
+        }
+    }
+
+    [DatabaseFact]
+    public async Task Dev_seed_replaces_the_old_receipt_line_settings()
+    {
+        await ExecAsync(
+            "INSERT INTO settings (id, branch_id, setting_key, setting_value) VALUES (@id, NULL, 'receipt.header_lines', '[\"LAMA\"]')",
+            new { id = Guid.CreateVersion7() });
+
+        await new DevSeeder(new Pos.NodeService.Data.TransactionRunner(db.Factory), TimeProvider.System).SeedAsync("TK01");
+
+        await using var connection = await db.Factory.OpenAsync();
+        Assert.Equal(0, await connection.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM settings WHERE setting_key IN ('receipt.header_lines','receipt.footer_lines') AND deleted_at IS NULL"));
+        Assert.Equal(6, await connection.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM settings WHERE setting_key LIKE 'receipt.%' AND branch_id IS NULL AND deleted_at IS NULL"));
     }
 
     [DatabaseFact]

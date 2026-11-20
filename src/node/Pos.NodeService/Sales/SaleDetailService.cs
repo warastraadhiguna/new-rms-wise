@@ -21,8 +21,15 @@ public sealed record SaleDetailPaymentDto(
     string Method, string MethodName, bool IsCash, bool IsCredit, decimal Amount, decimal? Tendered, decimal? ChangeGiven,
     string? Reference);
 
-/// <summary>Settings <c>receipt.header_lines</c> / <c>receipt.footer_lines</c> of the sale's branch.</summary>
-public sealed record ReceiptTextDto(IReadOnlyList<string> HeaderLines, IReadOnlyList<string> FooterLines);
+/// <summary>
+/// Receipt texts of the sale's branch, one setting each (like the company table and footerText1/2 of RMS 2):
+/// <c>receipt.store_name</c>, <c>receipt.address</c>, <c>receipt.city</c>, <c>receipt.phone</c>,
+/// <c>receipt.footer_1</c>, <c>receipt.footer_2</c>. Empty or null = not printed.
+/// </summary>
+public sealed record ReceiptTextDto(
+    string? StoreName, string? Address, string? City, string? Phone,
+    [property: System.Text.Json.Serialization.JsonPropertyName("footer_1")] string? Footer1,
+    [property: System.Text.Json.Serialization.JsonPropertyName("footer_2")] string? Footer2);
 
 /// <summary>A stored sale with what a receipt needs (names, cashier, branch timezone, receipt texts).</summary>
 /// <param name="SoldAt">UTC.</param>
@@ -51,8 +58,14 @@ public sealed record SaleDetailDto(
 /// <summary>GET /api/v1/sales/{id}: read model for receipts (also replicas of other nodes' sales).</summary>
 public sealed class SaleDetailService(DbConnectionFactory connections)
 {
-    public const string HeaderLinesKey = "receipt.header_lines";
-    public const string FooterLinesKey = "receipt.footer_lines";
+    public const string StoreNameKey = "receipt.store_name";
+    public const string AddressKey = "receipt.address";
+    public const string CityKey = "receipt.city";
+    public const string PhoneKey = "receipt.phone";
+    public const string Footer1Key = "receipt.footer_1";
+    public const string Footer2Key = "receipt.footer_2";
+
+    private static readonly string[] AllKeys = [StoreNameKey, AddressKey, CityKey, PhoneKey, Footer1Key, Footer2Key];
 
     public async Task<SaleDetailDto> GetAsync(Guid id, CancellationToken ct = default)
     {
@@ -108,38 +121,39 @@ public sealed class SaleDetailService(DbConnectionFactory connections)
     }
 
     /// <summary>
-    /// Branch row wins over the global row. Missing header → the store name; missing footer → the RMS 2 thank-you
-    /// line. An empty array means "print nothing there".
+    /// Branch row wins over the global row. Missing store name → the node's name; missing footer_1 → the RMS 2
+    /// thank-you line; other missing fields are empty. An empty string means "print nothing there".
     /// </summary>
     private static async Task<ReceiptTextDto> LoadReceiptTextAsync(MySqlConnection c, Guid branchId, string nodeName, CancellationToken ct)
     {
         var rows = await c.QueryAsync<(string Key, string Value)>(new CommandDefinition(
             """
             SELECT setting_key, CAST(setting_value AS CHAR) FROM settings
-            WHERE setting_key IN (@HeaderLinesKey, @FooterLinesKey)
+            WHERE setting_key IN @Keys
               AND deleted_at IS NULL AND (branch_id = @branchId OR branch_id IS NULL)
             ORDER BY branch_id IS NULL
-            """, new { HeaderLinesKey, FooterLinesKey, branchId }, cancellationToken: ct));
+            """, new { Keys = AllKeys, branchId }, cancellationToken: ct));
         var values = rows.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.First().Value);
 
+        string? Get(string key, string? fallback = null) =>
+            values.TryGetValue(key, out var json) ? ParseText(key, json) : fallback;
+
         return new ReceiptTextDto(
-            values.TryGetValue(HeaderLinesKey, out var header) ? ParseLines(HeaderLinesKey, header) : [nodeName],
-            values.TryGetValue(FooterLinesKey, out var footer) ? ParseLines(FooterLinesKey, footer) : [ReceiptDefaults.FooterLine]);
+            Get(StoreNameKey, nodeName), Get(AddressKey), Get(CityKey), Get(PhoneKey),
+            Get(Footer1Key, ReceiptDefaults.FooterLine), Get(Footer2Key));
     }
 
-    /// <summary>A JSON array of strings; a single string is accepted as one line.</summary>
-    internal static IReadOnlyList<string> ParseLines(string key, string json)
+    /// <summary>A JSON string; JSON null counts as empty.</summary>
+    internal static string? ParseText(string key, string json)
     {
         try
         {
             using var doc = JsonDocument.Parse(json);
             return doc.RootElement.ValueKind switch
             {
-                JsonValueKind.Array => doc.RootElement.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.String
-                    ? e.GetString()!
-                    : throw new FormatException($"Setting {key} must be an array of strings.")).ToList(),
-                JsonValueKind.String => [doc.RootElement.GetString()!],
-                _ => throw new FormatException($"Setting {key} must be an array of strings."),
+                JsonValueKind.String => doc.RootElement.GetString(),
+                JsonValueKind.Null => null,
+                _ => throw new FormatException($"Setting {key} must be a JSON string."),
             };
         }
         catch (JsonException ex)

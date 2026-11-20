@@ -302,5 +302,5 @@ public static class Receipts
         [cash
             ? new SaleDetailPayment("CASH", "TUNAI", true, false, 19500m, 20000m, 500m, null)
             : new SaleDetailPayment("QRIS", "QRIS", false, false, 19500m, null, null, "REF1")],
-        new ReceiptText(["TOKO DEV", "Jl. Merdeka No. 1"], ["Terimakasih Atas Kunjungannya"]));
+        new ReceiptText("TOKO DEV", "Jl. Merdeka No. 1", null, null, "Terimakasih Atas Kunjungannya", null));
 }

@@ -5,7 +5,7 @@ namespace Pos.Shared.Printing;
 
 public static class ReceiptDefaults
 {
-    /// <summary>Footer when the setting <c>receipt.footer_lines</c> is missing (RMS 2 text).</summary>
+    /// <summary>First footer line when the setting <c>receipt.footer_1</c> is missing (RMS 2 text).</summary>
     public const string FooterLine = "Terimakasih Atas Kunjungannya";
 }
 
@@ -178,4 +178,22 @@ public static class ReceiptFormatter
     }
 
     private static string Fit(string text, int width) => text.Length <= width ? text : text[..width];
+}
+
+/// <summary>
+/// Receipt texts from separate fields, like the company table and footerText1/footerText2 of RMS 2
+/// (settings <c>receipt.store_name</c>, <c>receipt.address</c>, <c>receipt.city</c>, <c>receipt.phone</c>,
+/// <c>receipt.footer_1</c>, <c>receipt.footer_2</c>). Empty fields are not printed.
+/// </summary>
+public static class ReceiptTexts
+{
+    public const string PhonePrefix = "Telp. ";
+
+    public static IReadOnlyList<string> Header(string? storeName, string? address, string? city, string? phone) =>
+        NonEmpty(storeName, address, city, string.IsNullOrWhiteSpace(phone) ? null : PhonePrefix + phone.Trim());
+
+    public static IReadOnlyList<string> Footer(string? footer1, string? footer2) => NonEmpty(footer1, footer2);
+
+    private static List<string> NonEmpty(params string?[] values) =>
+        values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v!.Trim()).ToList();
 }

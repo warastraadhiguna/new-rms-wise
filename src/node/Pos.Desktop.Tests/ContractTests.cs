@@ -72,12 +72,16 @@ public class ContractTests
         Assert.Equal(5m, sale.DiscountPct);
         Assert.Equal(["Air mineral 600 ml", "Gula pasir 1 kg"], sale.Lines.Select(l => l.Name));
         Assert.Equal("TUNAI", Assert.Single(sale.Payments).MethodName);
-        Assert.Equal(["TOKO DEV", "Jl. Merdeka No. 1", "Jakarta"], sale.Receipt.HeaderLines);
+        Assert.Equal("021-5550123", sale.Receipt.Phone);
+        Assert.Equal(["TOKO DEV", "Jl. Merdeka No. 1", "Jakarta", "Telp. 021-5550123"], sale.Receipt.HeaderLines);
+        Assert.Equal(["Terimakasih Atas Kunjungannya", "Sampai Jumpa Kembali"], sale.Receipt.FooterLines);
 
         var lines = Pos.Shared.Printing.ReceiptFormatter.Format(ReceiptService.ToReceiptData(sale), 48);
         Assert.Contains("Tanggal: 20/11/2026 18:40", lines);
         Assert.Contains(lines, l => l.StartsWith("Diskon 5%", StringComparison.Ordinal) && l.EndsWith("1.500", StringComparison.Ordinal));
         Assert.Contains(lines, l => l.StartsWith("Kembali", StringComparison.Ordinal) && l.EndsWith("21.500", StringComparison.Ordinal));
+        Assert.Equal("         Terimakasih Atas Kunjungannya", lines[^2]);
+        Assert.Equal("              Sampai Jumpa Kembali", lines[^1]);
     }
 
     [Fact]

@@ -247,23 +247,69 @@ public class SalesViewUiTests
         Assert.Equal(["38", "3 PAK 8 PCS", "-1 BOX 2 PCS"], cells);
     });
 
-    [Fact]
-    public void Edge_button_hides_the_data_panel_widens_transaksi_and_is_remembered() => WithForm((view, vm) =>
+    /// <summary>Top-left corner of a control inside the form.</summary>
+    private static Point At(SalesView view, FrameworkElement element) => element.TranslatePoint(new Point(0, 0), view);
+
+    private static bool IsInside(DependencyObject parent, DependencyObject child)
     {
-        var transaction = Find<GroupBox>(view, "TransactionGroup");
+        for (var node = child; node is not null; node = System.Windows.Media.VisualTreeHelper.GetParent(node))
+        {
+            if (ReferenceEquals(node, parent))
+                return true;
+        }
+        return false;
+    }
+
+    [Fact]
+    public void Member_and_cari_sit_above_the_total_on_the_right_and_the_left_panel_holds_only_the_grid() => WithForm((view, _) =>
+    {
+        view.UpdateLayout();
+        var dataPanel = Find<GroupBox>(view, "DataPanel");
+        var right = Find<DockPanel>(view, "RightPanel");
+        var member = Find<TextBox>(view, "MemberBox");
+        var search = Find<TextBox>(view, "SearchBox");
+        var qty = Find<TextBox>(view, "QtyBox");
+        var total = Find<TextBlock>(view, "TotalText");
+        var cart = Find<DataGrid>(view, "CartGrid");
+
+        // right side, top to bottom: Member, Cari ... x qty, large total, cart
+        Assert.All(new FrameworkElement[] { member, search, qty, total, cart }, e => Assert.True(IsInside(right, e), e.Name));
+        Assert.True(At(view, member).Y < At(view, search).Y);
+        Assert.True(At(view, search).Y < At(view, total).Y);
+        Assert.True(At(view, total).Y < At(view, cart).Y);
+        Assert.Equal(At(view, search).Y, At(view, qty).Y, precision: 0);           // same row, x box on the right
+        Assert.True(At(view, qty).X > At(view, search).X);
+
+        // left side: only the product grid and Atur Tampilan
+        Assert.True(IsInside(dataPanel, Find<DataGrid>(view, "ProductGrid")));
+        Assert.True(IsInside(dataPanel, Find<GroupBox>(view, "ViewOptionsGroup")));
+        Assert.False(IsInside(dataPanel, search));
+        Assert.False(IsInside(dataPanel, member));
+        Assert.True(At(view, dataPanel).X + dataPanel.ActualWidth < At(view, search).X);
+
+        Assert.True(HasFocus(search));                                             // initial focus unchanged
+    });
+
+    [Fact]
+    public void Edge_button_hides_the_whole_left_panel_and_transaksi_spans_the_window() => WithForm((view, vm) =>
+    {
+        var right = Find<DockPanel>(view, "RightPanel");
         var toggle = Find<Button>(view, "DataPanelToggle");
-        var wideBefore = transaction.ActualWidth;
+        var wideBefore = right.ActualWidth;
         Assert.Equal("◀", toggle.Content);
 
         Click(toggle);
         view.UpdateLayout();
 
         Assert.False(vm.IsDataPanelVisible);
-        Assert.Equal(Visibility.Collapsed, Find<DataGrid>(view, "ProductGrid").Visibility);
-        Assert.Equal(Visibility.Collapsed, Find<GroupBox>(view, "ViewOptionsGroup").Visibility);
-        Assert.True(Find<TextBox>(view, "SearchBox").IsVisible);     // scanning keeps working
+        Assert.Equal(Visibility.Collapsed, Find<GroupBox>(view, "DataPanel").Visibility);
+        Assert.False(Find<DataGrid>(view, "ProductGrid").IsVisible);
+        Assert.False(Find<GroupBox>(view, "ViewOptionsGroup").IsVisible);
+        Assert.True(Find<TextBox>(view, "SearchBox").IsVisible);                    // scanning keeps working
         Assert.True(Find<TextBox>(view, "MemberBox").IsVisible);
-        Assert.True(transaction.ActualWidth > wideBefore + 100, $"Transaksi {wideBefore} -> {transaction.ActualWidth}");
+        // the form has a 10 px margin on each side and the 16 px edge column; everything else is Transaksi
+        Assert.Equal(view.ActualWidth - 20 - 16, right.ActualWidth, precision: 0);
+        Assert.Equal(26, At(view, right).X, precision: 0);
         Assert.Equal("▶", toggle.Content);
         Assert.False(_viewStore.Settings.ShowDataPanel);
 
@@ -271,8 +317,8 @@ public class SalesViewUiTests
         view.UpdateLayout();
 
         Assert.True(vm.IsDataPanelVisible);
-        Assert.Equal(Visibility.Visible, Find<DataGrid>(view, "ProductGrid").Visibility);
-        Assert.Equal(wideBefore, transaction.ActualWidth, precision: 0);
+        Assert.True(Find<DataGrid>(view, "ProductGrid").IsVisible);
+        Assert.Equal(wideBefore, right.ActualWidth, precision: 0);
         Assert.True(_viewStore.Settings.ShowDataPanel);
     });
 
@@ -312,8 +358,9 @@ public class SalesViewUiTests
         WithForm((view, vm) =>
         {
             Assert.False(vm.IsDataPanelVisible);
-            Assert.Equal(Visibility.Collapsed, Find<DataGrid>(view, "ProductGrid").Visibility);
+            Assert.Equal(Visibility.Collapsed, Find<GroupBox>(view, "DataPanel").Visibility);
             Assert.Equal("▶", Find<Button>(view, "DataPanelToggle").Content);
+            Assert.True(HasFocus(Find<TextBox>(view, "SearchBox")));
         });
     }
 

@@ -89,7 +89,7 @@ public sealed partial class SalesViewModel : ObservableObject
     [ObservableProperty] private bool _showShelf;
     [ObservableProperty] private bool _showStock;
 
-    /// <summary>Left "Data" panel (product grid + Atur Tampilan); F3 or the edge button hides it to widen Transaksi.</summary>
+    /// <summary>Left "Data" panel (product grid + Atur Tampilan only); F3 or the edge button hides it completely.</summary>
     [ObservableProperty] private bool _isDataPanelVisible = true;
     [ObservableProperty] private bool _showCategory;
     [ObservableProperty] private bool _showDiscountPrice;
@@ -643,7 +643,7 @@ public sealed partial class SalesViewModel : ObservableObject
     partial void OnShowUnitChanged(bool value) => SaveViewSettings();
     partial void OnIsDataPanelVisibleChanged(bool value) => SaveViewSettings();
 
-    /// <summary>F3 or the button on the panel edge. The search row stays, so scanning and F1 keep working.</summary>
+    /// <summary>F3 or the button on the panel edge. Member and the search row sit above Transaksi, so scanning and F1 keep working.</summary>
     [RelayCommand]
     private void ToggleDataPanel()
     {

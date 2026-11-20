@@ -196,10 +196,13 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
               (@s1, NULL, 'rounding.cash_step', '"100"'),
               (@s2, NULL, 'rounding.cash_mode', '"nearest"'),
               (@s3, NULL, 'currency.decimals', '0'),
-              (@s4, NULL, 'returns.window_days', '7'),
-              (@s5, NULL, 'receipt.header_lines', @ReceiptHeader),
-              (@s6, NULL, 'receipt.footer_lines', @ReceiptFooter)
-            """, new { s1 = Id(), s2 = Id(), s3 = Id(), s4 = Id(), s5 = Id(), s6 = Id(), ReceiptHeader, ReceiptFooter });
+              (@s4, NULL, 'returns.window_days', '7')
+            """, new { s1 = Id(), s2 = Id(), s3 = Id(), s4 = Id() });
+        foreach (var (key, value) in ReceiptSettings)
+        {
+            await Exec("INSERT INTO settings (id, branch_id, setting_key, setting_value) VALUES (@id, NULL, @key, JSON_QUOTE(@value))",
+                new { id = Id(), key, value });
+        }
         await Exec("INSERT INTO reasons (id, type, name) VALUES (@id, 'ADJUSTMENT', 'Saldo awal (OPENING)')", new { id = Id() });
     }
 
@@ -211,8 +214,19 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
     private const string StoreAdminPermissions =
         """["shift.open","shift.close","shift.share","sale.create","sale.discount.override","sale.line.delete","discount.max:100"]""";
 
-    private const string ReceiptHeader = """["TOKO DEV","Jl. Merdeka No. 1","Jakarta"]""";
-    private const string ReceiptFooter = """["Terimakasih Atas Kunjungannya"]""";
+    /// <summary>Receipt texts, one setting per field like the RMS 2 company table and footerText1/footerText2.</summary>
+    private static readonly (string Key, string Value)[] ReceiptSettings =
+    [
+        ("receipt.store_name", "TOKO DEV"),
+        ("receipt.address", "Jl. Merdeka No. 1"),
+        ("receipt.city", "Jakarta"),
+        ("receipt.phone", "021-5550123"),
+        ("receipt.footer_1", "Terimakasih Atas Kunjungannya"),
+        ("receipt.footer_2", "Sampai Jumpa Kembali"),
+    ];
+
+    /// <summary>Replaced by the per-field receipt settings (owner revision).</summary>
+    private static readonly string[] ObsoleteReceiptKeys = ["receipt.header_lines", "receipt.footer_lines"];
 
     /// <summary>
     /// Databases seeded before authentication existed: give the dev users real bcrypt hashes and the
@@ -296,12 +310,15 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
                 """, new { id = Guid.CreateVersion7(), storeAdmin });
         }
 
-        foreach (var (key, value) in new[] { ("receipt.header_lines", ReceiptHeader), ("receipt.footer_lines", ReceiptFooter) })
+        changes += await Exec(
+            "UPDATE settings SET deleted_at = UTC_TIMESTAMP(3), version = version + 1 WHERE setting_key IN @ObsoleteReceiptKeys AND deleted_at IS NULL",
+            new { ObsoleteReceiptKeys });
+        foreach (var (key, value) in ReceiptSettings)
         {
             changes += await Exec(
                 """
                 INSERT INTO settings (id, branch_id, setting_key, setting_value)
-                SELECT @id, NULL, @key, @value FROM DUAL
+                SELECT @id, NULL, @key, JSON_QUOTE(@value) FROM DUAL
                 WHERE NOT EXISTS (SELECT 1 FROM settings WHERE branch_id IS NULL AND setting_key = @key)
                 """, new { id = Guid.CreateVersion7(), key, value });
         }

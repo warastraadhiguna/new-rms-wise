@@ -232,7 +232,16 @@ public sealed record SaleDetailPayment(
     string Method, string MethodName, bool IsCash, bool IsCredit, decimal Amount, decimal? Tendered, decimal? ChangeGiven,
     string? Reference);
 
-public sealed record ReceiptText(IReadOnlyList<string> HeaderLines, IReadOnlyList<string> FooterLines);
+/// <summary>Receipt texts per field (settings receipt.store_name, address, city, phone, footer_1, footer_2).</summary>
+public sealed record ReceiptText(
+    string? StoreName, string? Address, string? City, string? Phone,
+    [property: System.Text.Json.Serialization.JsonPropertyName("footer_1")] string? Footer1,
+    [property: System.Text.Json.Serialization.JsonPropertyName("footer_2")] string? Footer2)
+{
+    public IReadOnlyList<string> HeaderLines => Pos.Shared.Printing.ReceiptTexts.Header(StoreName, Address, City, Phone);
+
+    public IReadOnlyList<string> FooterLines => Pos.Shared.Printing.ReceiptTexts.Footer(Footer1, Footer2);
+}
 
 /// <summary>GET /api/v1/sales/{id}: a stored sale with everything its receipt needs.</summary>
 /// <param name="SoldAt">UTC.</param>
