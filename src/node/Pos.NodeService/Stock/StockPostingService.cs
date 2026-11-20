@@ -1,4 +1,3 @@
-using System.Data;
 using MySqlConnector;
 using Pos.NodeService.Data;
 using Pos.Shared.Stock;
@@ -16,15 +15,21 @@ public sealed record StockMovement(
 
 /// <summary>
 /// Posts stock movements: locks the affected balance rows, allocates with Pos.Shared, then writes
-/// stock_ledger and stock_balances in ONE transaction. Deadlocks and lock wait timeouts re-run the
-/// whole transaction (see <see cref="TransientRetry"/>).
+/// stock_ledger and stock_balances. Standalone calls run in their own transaction with retry;
+/// documents use <see cref="PostWithinAsync"/> inside their own transaction.
 /// </summary>
-public sealed class StockPostingService(
-    DbConnectionFactory connectionFactory,
-    ILogger<StockPostingService>? logger = null)
+public sealed class StockPostingService
 {
-    private readonly TransientRetry _retry =
-        new((ILogger?)logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+    private readonly TransactionRunner _runner;
+
+    [ActivatorUtilitiesConstructor]
+    public StockPostingService(TransactionRunner runner) => _runner = runner;
+
+    /// <summary>Convenience for tests and tools: own transaction runner.</summary>
+    public StockPostingService(DbConnectionFactory connectionFactory, ILogger<StockPostingService>? logger = null)
+        : this(new TransactionRunner(connectionFactory, logger is null ? null : new ForwardingLogger(logger)))
+    {
+    }
 
     /// <summary>
     /// Posts all movements of a document atomically. Later movements see the effect of earlier ones.
@@ -34,8 +39,18 @@ public sealed class StockPostingService(
         IReadOnlyList<StockMovement> movements, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(movements);
+        return _runner.RunAsync((connection, transaction, ct) => PostWithinAsync(connection, transaction, movements, ct),
+            "Stock posting", cancellationToken);
+    }
 
-        return ExecuteAsync(
+    /// <summary>Same as <see cref="PostAsync"/> but inside the caller's transaction (no commit, no retry).</summary>
+    public static Task<IReadOnlyList<StockLedgerEntry>> PostWithinAsync(
+        MySqlConnection connection, MySqlTransaction transaction,
+        IReadOnlyList<StockMovement> movements, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(movements);
+
+        return ExecuteWithinAsync(connection, transaction,
             movements.Select(m => (m.Line.LocationId, m.Line.ProductId)),
             context =>
             {
@@ -73,13 +88,14 @@ public sealed class StockPostingService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        return ExecuteAsync(
-            [(request.FromLocationId, request.ProductId), (request.ToLocationId, request.ProductId)],
-            context => StockTransfer.Transfer(request, context.Balances,
-                BranchClock.Today(request.OccurredAt, context.TimeZones[request.FromLocationId]),
-                context.TrackExpiry[request.ProductId], allowExpired),
-            result => result.All,
-            cancellationToken);
+        return _runner.RunAsync((connection, transaction, ct) => ExecuteWithinAsync(connection, transaction,
+                [(request.FromLocationId, request.ProductId), (request.ToLocationId, request.ProductId)],
+                context => StockTransfer.Transfer(request, context.Balances,
+                    BranchClock.Today(request.OccurredAt, context.TimeZones[request.FromLocationId]),
+                    context.TrackExpiry[request.ProductId], allowExpired),
+                result => result.All,
+                ct),
+            "Stock transfer", cancellationToken);
     }
 
     private sealed record PostingContext(
@@ -87,7 +103,9 @@ public sealed class StockPostingService(
         IReadOnlyDictionary<Guid, bool> TrackExpiry,
         IReadOnlyDictionary<Guid, string> TimeZones);
 
-    private Task<T> ExecuteAsync<T>(
+    private static async Task<T> ExecuteWithinAsync<T>(
+        MySqlConnection connection,
+        MySqlTransaction transaction,
         IEnumerable<(Guid LocationId, Guid ProductId)> keys,
         Func<PostingContext, T> compute,
         Func<T, IReadOnlyList<StockLedgerEntry>> entriesOf,
@@ -98,20 +116,6 @@ public sealed class StockPostingService(
             .OrderBy(k => k.ProductId)
             .ThenBy(k => k.LocationId)
             .ToList();
-
-        // Each attempt re-reads balances and re-allocates, so a retry never reuses stale state.
-        return _retry.ExecuteAsync(ct => ExecuteOnceAsync(lockOrder, compute, entriesOf, ct), "Stock posting", cancellationToken);
-    }
-
-    private async Task<T> ExecuteOnceAsync<T>(
-        IReadOnlyList<(Guid LocationId, Guid ProductId)> lockOrder,
-        Func<PostingContext, T> compute,
-        Func<T, IReadOnlyList<StockLedgerEntry>> entriesOf,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
-        // READ COMMITTED: locking reads see the latest committed rows and take no gap locks.
-        await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
         var trackExpiry = new Dictionary<Guid, bool>();
         var timeZones = new Dictionary<Guid, string>();
@@ -143,7 +147,15 @@ public sealed class StockPostingService(
             await StockRepository.UpsertBalancesAsync(connection, transaction, entries, cancellationToken);
         }
 
-        await transaction.CommitAsync(cancellationToken);
         return result;
+    }
+
+    /// <summary>Keeps retry warnings under the StockPostingService category for standalone use.</summary>
+    private sealed class ForwardingLogger(ILogger inner) : ILogger<TransactionRunner>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => inner.BeginScope(state);
+        public bool IsEnabled(LogLevel logLevel) => inner.IsEnabled(logLevel);
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => inner.Log(logLevel, eventId, state, exception, formatter);
     }
 }

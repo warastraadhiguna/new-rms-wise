@@ -26,6 +26,11 @@
 | 2026-11-20 | One document line produces one `stock_ledger` entry per expiry bucket. Ledger ids are UUID v7, `base_qty` is signed (+ in, - out), `occurred_at` must be UTC, `doc_type` must be one of `StockDocTypes`. |
 | 2026-11-20 | Transfers keep the expiry of each FEFO allocation. Within a node: one `LOCATION_TRANSFER` with out entries at the source and in entries at the destination (`StockTransfer.Transfer`). Across nodes: the sender's delivery has one line per expiry; the receiver's goods receipt reads those expiries (`StockTransfer.AllocateReceipt`), covering a negative null bucket earliest expiry first. Total out == total in. |
 | 2026-11-20 | "Today" for expiry checks is the branch-local date of the Node Service UTC clock (`BranchClock.Today`, IANA timezone from `branches.timezone`). |
+| 2026-11-20 | Database server: MySQL 8.0.19+ only (upsert alias syntax); MariaDB is refused at startup. Every connection runs in UTC. Deadlocks (1213) and lock wait timeouts (1205) re-run the whole transaction up to 3 times. |
+| 2026-11-20 | Node identity comes from setting `Node:Code`; the node row arrives with master data, so endpoints that need it answer 503 until it exists. |
+| 2026-11-20 | Document numbers `{NODE}-{TYPE}-{YYYYMM}-{000001}` from `document_sequences`, month in the branch timezone. The sequence row is locked until the document commits, so numbers are unique and gapless (a rollback returns the number). Type codes: `SL` sale, `SH` cashier shift, `ADJ` stock adjustment. |
+| 2026-11-20 | API and sync JSON: snake_case, decimals as strings with 4 decimals, times ISO-8601 UTC with milliseconds (`PosJson`). Each document writes its `sync_outbox` row (full payload) in the same transaction. |
+| 2026-11-20 | Dev data comes from `dotnet run --project src/node/Pos.NodeService -- seed-dev` (refuses databases not named `*_dev`), never from a migration. Opening stock is posted through a real ADJUSTMENT document. |
 
 ## Setting keys
 
