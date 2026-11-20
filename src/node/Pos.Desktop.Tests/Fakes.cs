@@ -43,7 +43,6 @@ public sealed class FakeServer : HttpMessageHandler
 public sealed class FakeNodeApi : INodeApi
 {
     public Func<string, string, LoginResult>? OnLogin { get; set; }
-    public Func<string, string, LoginResult>? OnPinLogin { get; set; }
     public Func<ShiftInfo?>? OnCurrentShift { get; set; }
     public Func<decimal, ShiftInfo>? OnOpenShift { get; set; }
 
@@ -53,12 +52,6 @@ public sealed class FakeNodeApi : INodeApi
     {
         Calls.Add($"login:{username}");
         return Task.FromResult(OnLogin!(username, password));
-    }
-
-    public Task<LoginResult> PinLoginAsync(string username, string pin, CancellationToken ct = default)
-    {
-        Calls.Add($"pin:{username}");
-        return Task.FromResult(OnPinLogin!(username, pin));
     }
 
     public Task<ShiftInfo?> GetCurrentShiftAsync(CancellationToken ct = default)

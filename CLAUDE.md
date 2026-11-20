@@ -85,6 +85,9 @@ src/android/           Kotlin app (later)
 - .NET 10, nullable enabled, implicit usings, file-scoped namespaces.
 - Business logic goes in `Pos.Shared` as plain classes with no DB/UI dependency, so it is testable.
 - WPF uses MVVM (CommunityToolkit.Mvvm). No business logic in code-behind.
+- **The cashier UI follows the layout, terms and shortcuts of the old application (RMS 2).**
+  Improvements must not change cashiers' habits. When unsure how RMS 2 does something, ask before
+  designing a new layout, flow or key.
 - **Every WPF UI change needs at least one test that interacts through real controls**
   (create the window on an STA thread, type into the TextBox/PasswordBox, press Enter or invoke the
   button, then assert on the ViewModel or the API call). ViewModel-only tests do not count: they cannot

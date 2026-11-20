@@ -21,10 +21,6 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
         SendAsync<LoginResult>(HttpMethod.Post, "api/v1/auth/login", new { Username = username, Password = password },
             authenticated: false, withDevice: false, ct);
 
-    public Task<LoginResult> PinLoginAsync(string username, string pin, CancellationToken ct = default) =>
-        SendAsync<LoginResult>(HttpMethod.Post, "api/v1/auth/pin", new { Username = username, Pin = pin },
-            authenticated: false, withDevice: false, ct);
-
     public async Task<ShiftInfo?> GetCurrentShiftAsync(CancellationToken ct = default)
     {
         try

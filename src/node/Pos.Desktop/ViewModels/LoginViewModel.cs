@@ -5,7 +5,7 @@ using Pos.Desktop.Services;
 namespace Pos.Desktop.ViewModels;
 
 /// <summary>
-/// Login with username + password, or username + PIN (quick cashier change). After login the device's
+/// Login with username + password only, as in the old application (RMS 2). After login the device's
 /// open shift decides the next screen: own shift → main window, none → open shift, someone else's → refused.
 /// </summary>
 public sealed partial class LoginViewModel(INodeApi api, SessionState session, INavigator navigator) : ObservableObject
@@ -17,19 +17,11 @@ public sealed partial class LoginViewModel(INodeApi api, SessionState session, I
     private string _password = "";
 
     [ObservableProperty]
-    private string _pin = "";
-
-    [ObservableProperty]
-    private bool _usePin;
-
-    [ObservableProperty]
     private string? _errorMessage;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(LoginCommand))]
     private bool _isBusy;
-
-    partial void OnUsePinChanged(bool value) => ErrorMessage = null;
 
     private bool CanLogin() => !IsBusy;
 
@@ -43,16 +35,16 @@ public sealed partial class LoginViewModel(INodeApi api, SessionState session, I
             ErrorMessage = "Isi username terlebih dahulu.";
             return;
         }
-        if (UsePin ? Pin.Length == 0 : Password.Length == 0)
+        if (Password.Length == 0)
         {
-            ErrorMessage = UsePin ? "Isi PIN terlebih dahulu." : "Isi password terlebih dahulu.";
+            ErrorMessage = "Isi password terlebih dahulu.";
             return;
         }
 
         IsBusy = true;
         try
         {
-            var login = UsePin ? await api.PinLoginAsync(username, Pin) : await api.LoginAsync(username, Password);
+            var login = await api.LoginAsync(username, Password);
             session.SetLogin(login);
 
             var shift = await api.GetCurrentShiftAsync();
@@ -79,9 +71,8 @@ public sealed partial class LoginViewModel(INodeApi api, SessionState session, I
         }
         finally
         {
-            // Never keep secrets in memory longer than needed.
+            // Never keep the password in memory longer than needed.
             Password = "";
-            Pin = "";
             IsBusy = false;
         }
     }

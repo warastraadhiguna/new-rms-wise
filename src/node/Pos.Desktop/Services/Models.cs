@@ -25,8 +25,6 @@ public interface INodeApi
 {
     Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default);
 
-    Task<LoginResult> PinLoginAsync(string username, string pin, CancellationToken ct = default);
-
     /// <returns>The device's open shift, or null when none is open.</returns>
     Task<ShiftInfo?> GetCurrentShiftAsync(CancellationToken ct = default);
 

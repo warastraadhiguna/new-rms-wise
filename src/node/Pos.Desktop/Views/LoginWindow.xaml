@@ -11,8 +11,6 @@
     </Window.InputBindings>
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-        <infra:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
-        <infra:InverseBooleanConverter x:Key="InverseBool" />
     </Window.Resources>
 
     <StackPanel Margin="24">
@@ -22,23 +20,9 @@
         <TextBox x:Name="UsernameBox" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                  FontSize="16" Padding="6" Margin="0,4,0,12" />
 
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-            <RadioButton x:Name="PasswordModeOption" GroupName="LoginMode" Content="Password" Margin="0,0,16,0"
-                         IsChecked="{Binding UsePin, Converter={StaticResource InverseBool}}" />
-            <RadioButton x:Name="PinModeOption" GroupName="LoginMode" Content="PIN (ganti kasir cepat)" IsChecked="{Binding UsePin}" />
-        </StackPanel>
-
-        <StackPanel Visibility="{Binding UsePin, Converter={StaticResource InverseBoolToVisibility}}">
-            <TextBlock Text="Password" />
-            <PasswordBox x:Name="PasswordInput" infra:PasswordBoxBinding.BoundPassword="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
-                         FontSize="16" Padding="6" Margin="0,4,0,12" />
-        </StackPanel>
-
-        <StackPanel Visibility="{Binding UsePin, Converter={StaticResource BoolToVisibility}}">
-            <TextBlock Text="PIN" />
-            <PasswordBox x:Name="PinInput" infra:PasswordBoxBinding.BoundPassword="{Binding Pin, UpdateSourceTrigger=PropertyChanged}"
-                         FontSize="16" Padding="6" Margin="0,4,0,12" MaxLength="8" />
-        </StackPanel>
+        <TextBlock Text="Password" />
+        <PasswordBox x:Name="PasswordInput" infra:PasswordBoxBinding.BoundPassword="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                     FontSize="16" Padding="6" Margin="0,4,0,12" />
 
         <TextBlock x:Name="ErrorText" Text="{Binding ErrorMessage}" Foreground="Firebrick" TextWrapping="Wrap" Margin="0,0,0,8" />
 

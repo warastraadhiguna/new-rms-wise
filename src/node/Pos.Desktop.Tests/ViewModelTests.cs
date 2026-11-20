@@ -81,36 +81,16 @@ public class LoginViewModelTests
     }
 
     [Fact]
-    public async Task Pin_mode_uses_the_pin()
-    {
-        _api.OnPinLogin = (_, pin) => pin == "123456" ? Samples.Login() : throw new NodeApiException("salah", "invalid_credentials", 401);
-        _api.OnCurrentShift = () => Samples.Shift();
-        var vm = Vm();
-        vm.UsePin = true;
-        vm.Username = "kasir1";
-
-        await vm.LoginCommand.ExecuteAsync(null);
-        Assert.Equal("Isi PIN terlebih dahulu.", vm.ErrorMessage);
-
-        vm.Pin = "123456";
-        await vm.LoginCommand.ExecuteAsync(null);
-
-        Assert.Equal("pin:kasir1", _api.Calls[0]);
-        Assert.Equal(["main"], _navigator.Shown);
-        Assert.Equal("", vm.Pin);
-    }
-
-    [Fact]
     public async Task Api_error_is_shown_and_the_form_is_usable_again()
     {
-        _api.OnLogin = (_, _) => throw new NodeApiException("Username atau password/PIN salah.", "invalid_credentials", 401);
+        _api.OnLogin = (_, _) => throw new NodeApiException("Username atau password salah.", "invalid_credentials", 401);
         var vm = Vm();
         vm.Username = "kasir1";
         vm.Password = "salah";
 
         await vm.LoginCommand.ExecuteAsync(null);
 
-        Assert.Equal("Username atau password/PIN salah.", vm.ErrorMessage);
+        Assert.Equal("Username atau password salah.", vm.ErrorMessage);
         Assert.False(vm.IsBusy);
         Assert.True(vm.LoginCommand.CanExecute(null));
         Assert.Empty(_navigator.Shown);
@@ -118,14 +98,14 @@ public class LoginViewModelTests
     }
 
     [Fact]
-    public void Switching_mode_clears_the_error()
+    public void Login_is_username_and_password_only()
     {
-        var vm = Vm();
-        vm.ErrorMessage = "lama";
+        // The owner's decision: same flow as RMS 2, no PIN mode on the desktop.
+        var properties = typeof(LoginViewModel).GetProperties().Select(p => p.Name).ToList();
 
-        vm.UsePin = true;
-
-        Assert.Null(vm.ErrorMessage);
+        Assert.DoesNotContain("Pin", properties);
+        Assert.DoesNotContain("UsePin", properties);
+        Assert.DoesNotContain(typeof(INodeApi).GetMethods(), m => m.Name.Contains("Pin", StringComparison.Ordinal));
     }
 }
 

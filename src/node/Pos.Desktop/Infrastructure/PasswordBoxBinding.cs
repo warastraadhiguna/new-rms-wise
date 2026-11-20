@@ -58,23 +58,3 @@ public static class PasswordBoxBinding
         }
     }
 }
-
-/// <summary>true ↔ false (two-way), e.g. for the "Password" radio button bound to UsePin.</summary>
-public sealed class InverseBooleanConverter : System.Windows.Data.IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
-        value is not true;
-
-    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
-        value is not true;
-}
-
-/// <summary>true → Collapsed, false → Visible.</summary>
-public sealed class InverseBooleanToVisibilityConverter : System.Windows.Data.IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
-        value is true ? Visibility.Collapsed : Visibility.Visible;
-
-    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
-        value is Visibility.Collapsed;
-}

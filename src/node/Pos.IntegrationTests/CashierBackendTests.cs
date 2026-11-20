@@ -56,7 +56,7 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
     private Task<(HttpStatusCode Status, JsonElement Body)> Sell(
         string token, Guid device, TestProduct product, decimal qty, decimal pay,
         decimal? discountPct = null, decimal? discountAmount = null,
-        string? supervisorUsername = null, string? supervisorPin = null, string? approvalToken = null, Guid? id = null) =>
+        string? supervisorUsername = null, string? supervisorPassword = null, string? approvalToken = null, Guid? id = null) =>
         _client.PostAsync("/api/v1/sales", new
         {
             Id = id ?? Guid.CreateVersion7(),
@@ -65,12 +65,12 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
             DiscountPct = discountPct,
             DiscountAmount = discountAmount,
             SupervisorUsername = supervisorUsername,
-            SupervisorPin = supervisorPin,
+            SupervisorPassword = supervisorPassword,
             ApprovalToken = approvalToken,
         }, token, device);
 
-    private Task<(HttpStatusCode Status, JsonElement Body)> Approve(string token, string action, string username, string pin) =>
-        _client.PostAsync("/api/v1/auth/approve", new { Action = action, Username = username, Pin = pin }, token);
+    private Task<(HttpStatusCode Status, JsonElement Body)> Approve(string token, string action, string username, string password) =>
+        _client.PostAsync("/api/v1/auth/approve", new { Action = action, Username = username, Password = password }, token);
 
     private async Task<T> ScalarAsync<T>(string sql, object args)
     {
@@ -143,7 +143,7 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
     }
 
     [DatabaseFact]
-    public async Task Supervisor_pin_in_the_request_approves_a_larger_discount()
+    public async Task Supervisor_password_in_the_request_approves_a_larger_discount()
     {
         var cashier = await UserAsync(Cashier10);
         var supervisor = await UserAsync(Supervisor, pin: "9876");
@@ -151,7 +151,7 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
         var product = await db.CreateSellableProductAsync(10000m);
 
         var (status, body) = await Sell(cashier.Token, device, product, 1m, 7500m, discountPct: 25m,
-            supervisorUsername: supervisor.Name, supervisorPin: "9876");
+            supervisorUsername: supervisor.Name, supervisorPassword: "secret-1");
 
         Assert.Equal(HttpStatusCode.Created, status);
         Assert.Equal(supervisor.Id, body.GetProperty("sale").Id("discount_approved_by"));
@@ -159,7 +159,7 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
     }
 
     [DatabaseFact]
-    public async Task Wrong_supervisor_pin_or_supervisor_without_right_is_refused()
+    public async Task Wrong_supervisor_password_or_supervisor_without_right_is_refused()
     {
         var cashier = await UserAsync(Cashier10);
         var supervisor = await UserAsync(Supervisor, pin: "9876");
@@ -167,10 +167,10 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
         var device = await OpenShiftAsync(cashier.Token);
         var product = await db.CreateSellableProductAsync(10000m);
 
-        var wrongPin = await Sell(cashier.Token, device, product, 1m, 7500m, discountPct: 25m, supervisorUsername: supervisor.Name, supervisorPin: "0000");
-        var noRight = await Sell(cashier.Token, device, product, 1m, 7500m, discountPct: 25m, supervisorUsername: colleague.Name, supervisorPin: "1111");
+        var wrongPassword = await Sell(cashier.Token, device, product, 1m, 7500m, discountPct: 25m, supervisorUsername: supervisor.Name, supervisorPassword: "wrong-pass");
+        var noRight = await Sell(cashier.Token, device, product, 1m, 7500m, discountPct: 25m, supervisorUsername: colleague.Name, supervisorPassword: "secret-1");
 
-        Assert.Equal((HttpStatusCode.Forbidden, "approval_rejected"), (wrongPin.Status, wrongPin.Body.Str("code")));
+        Assert.Equal((HttpStatusCode.Forbidden, "approval_rejected"), (wrongPassword.Status, wrongPassword.Body.Str("code")));
         Assert.Equal((HttpStatusCode.Forbidden, "approval_not_permitted"), (noRight.Status, noRight.Body.Str("code")));
     }
 
@@ -184,7 +184,7 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
         var otherDevice = await OpenShiftAsync(other.Token);
         var product = await db.CreateSellableProductAsync(10000m);
 
-        var (approveStatus, approval) = await Approve(cashier.Token, "sale.discount.override", supervisor.Name, "9876");
+        var (approveStatus, approval) = await Approve(cashier.Token, "sale.discount.override", supervisor.Name, "secret-1");
         Assert.Equal(HttpStatusCode.OK, approveStatus);
         var token = approval.Str("approval_token");
         Assert.Equal(supervisor.Id, approval.GetProperty("approved_by").Id());
@@ -207,10 +207,10 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
         var device = await OpenShiftAsync(cashier.Token);
         var product = await db.CreateSellableProductAsync(10000m);
 
-        var expiring = (await Approve(cashier.Token, "sale.discount.override", supervisor.Name, "9876")).Body.Str("approval_token");
+        var expiring = (await Approve(cashier.Token, "sale.discount.override", supervisor.Name, "secret-1")).Body.Str("approval_token");
         await using (var connection = await db.Factory.OpenAsync())
             await connection.ExecuteAsync("UPDATE approval_tokens SET expires_at = UTC_TIMESTAMP(3) - INTERVAL 1 SECOND WHERE requested_by = @Id", new { cashier.Id });
-        var lineDelete = (await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "9876")).Body.Str("approval_token");
+        var lineDelete = (await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "secret-1")).Body.Str("approval_token");
 
         var expired = await Sell(cashier.Token, device, product, 1m, 7500m, discountPct: 25m, approvalToken: expiring);
         var wrongAction = await Sell(cashier.Token, device, product, 1m, 7500m, discountPct: 25m, approvalToken: lineDelete);
@@ -225,18 +225,53 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
         var cashier = await UserAsync(Cashier10);
         var supervisor = await UserAsync(Supervisor, pin: "9876");
 
-        var badAction = await Approve(cashier.Token, "sale.void.everything", supervisor.Name, "9876");
-        var badPin = await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "0000");
-        var anonymous = await _client.PostAsync("/api/v1/auth/approve", new { Action = "sale.line.delete", Username = supervisor.Name, Pin = "9876" });
-        var ok = await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "9876");
+        var badAction = await Approve(cashier.Token, "sale.void.everything", supervisor.Name, "secret-1");
+        var badPassword = await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "wrong-pass");
+        var anonymous = await _client.PostAsync("/api/v1/auth/approve", new { Action = "sale.line.delete", Username = supervisor.Name, Password = "secret-1" });
+        var ok = await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "secret-1");
 
         Assert.Equal((HttpStatusCode.UnprocessableEntity, "invalid_action"), (badAction.Status, badAction.Body.Str("code")));
-        Assert.Equal((HttpStatusCode.Forbidden, "approval_rejected"), (badPin.Status, badPin.Body.Str("code")));
+        Assert.Equal((HttpStatusCode.Forbidden, "approval_rejected"), (badPassword.Status, badPassword.Body.Str("code")));
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.Status);
         Assert.Equal(HttpStatusCode.OK, ok.Status);
         Assert.Equal("sale.line.delete", ok.Body.Str("action"));
         var expiresAt = DateTime.Parse(ok.Body.Str("expires_at"), null, System.Globalization.DateTimeStyles.AdjustToUniversal);
         Assert.InRange(expiresAt, DateTime.UtcNow, DateTime.UtcNow.AddMinutes(5));
+    }
+
+    [DatabaseFact]
+    public async Task Supervisor_pin_is_no_longer_accepted_for_approvals()
+    {
+        var cashier = await UserAsync(Cashier10);
+        var supervisor = await UserAsync(Supervisor, pin: "9876");
+        var device = await OpenShiftAsync(cashier.Token);
+        var product = await db.CreateSellableProductAsync(10000m);
+
+        var viaApprove = await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "9876");
+        var viaSale = await Sell(cashier.Token, device, product, 1m, 7500m, discountPct: 25m,
+            supervisorUsername: supervisor.Name, supervisorPassword: "9876");
+        var pinField = await _client.PostAsync("/api/v1/auth/approve",
+            new { Action = "sale.line.delete", Username = supervisor.Name, Pin = "9876" }, cashier.Token);
+
+        Assert.Equal("approval_rejected", viaApprove.Body.Str("code"));
+        Assert.Equal("approval_rejected", viaSale.Body.Str("code"));
+        Assert.Equal("approval_rejected", pinField.Body.Str("code"));
+    }
+
+    [DatabaseFact]
+    public async Task Wrong_supervisor_passwords_lock_the_supervisor_like_a_login()
+    {
+        var cashier = await UserAsync(Cashier10);
+        var supervisor = await UserAsync(Supervisor);
+
+        for (var i = 0; i < 5; i++)
+            Assert.Equal(HttpStatusCode.Forbidden, (await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "wrong-pass")).Status);
+
+        var locked = await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "secret-1");
+        var login = await _client.PostAsync("/api/v1/auth/login", new { Username = supervisor.Name, Password = "secret-1" });
+
+        Assert.Equal((HttpStatusCode.TooManyRequests, "account_locked"), (locked.Status, locked.Body.Str("code")));
+        Assert.Equal(HttpStatusCode.TooManyRequests, login.Status);
     }
 
     [DatabaseFact]

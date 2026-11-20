@@ -20,7 +20,7 @@ public static class ErrorMessages
 
     public static string For(string? code, int status, string? detail, int? retryAfterSeconds) => code switch
     {
-        "invalid_credentials" => "Username atau password/PIN salah.",
+        "invalid_credentials" => "Username atau password salah.",
         "account_locked" => $"Terlalu banyak percobaan gagal. Coba lagi dalam {Math.Max(1, (int)Math.Ceiling((retryAfterSeconds ?? 300) / 60.0))} menit.",
         "no_access_to_node" => "Pengguna ini tidak punya akses ke toko ini.",
         "user_inactive" => "Pengguna ini sudah tidak aktif. Hubungi admin toko.",

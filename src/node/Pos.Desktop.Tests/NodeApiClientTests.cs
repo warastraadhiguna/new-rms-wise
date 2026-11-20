@@ -49,18 +49,6 @@ public class NodeApiClientTests
     }
 
     [Fact]
-    public async Task Pin_login_uses_the_pin_endpoint()
-    {
-        _server.Reply(HttpStatusCode.OK, LoginJson);
-
-        await Client().PinLoginAsync("kasir1", "123456");
-
-        var (request, body) = Assert.Single(_server.Requests);
-        Assert.Equal("/api/v1/auth/pin", request.RequestUri!.AbsolutePath);
-        Assert.Contains("\"pin\":\"123456\"", body);
-    }
-
-    [Fact]
     public async Task Requests_carry_the_token_and_the_device_id()
     {
         _session.SetLogin(Samples.Login());
@@ -98,7 +86,7 @@ public class NodeApiClientTests
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, "invalid_credentials", "Username atau password/PIN salah.")]
+    [InlineData(HttpStatusCode.Unauthorized, "invalid_credentials", "Username atau password salah.")]
     [InlineData(HttpStatusCode.Forbidden, "no_access_to_node", "Pengguna ini tidak punya akses ke toko ini.")]
     [InlineData(HttpStatusCode.Forbidden, "device_not_allowed", "Perangkat ini belum terdaftar atau belum aktif di toko ini. Hubungi admin.")]
     [InlineData(HttpStatusCode.Unauthorized, "token_expired", "Sesi login sudah berakhir. Silakan login kembali.")]

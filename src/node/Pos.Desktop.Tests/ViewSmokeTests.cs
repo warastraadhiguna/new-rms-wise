@@ -6,6 +6,7 @@ using Pos.Desktop.Views;
 namespace Pos.Desktop.Tests;
 
 /// <summary>Loads every window's XAML with its ViewModel (not shown), so XAML mistakes fail here instead of at a store.</summary>
+[Collection(WpfUiCollection.Name)]
 public class ViewSmokeTests
 {
     private static void OnSta(Action action)

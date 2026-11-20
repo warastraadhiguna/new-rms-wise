@@ -202,7 +202,7 @@ public sealed class SaleService(
 
     /// <summary>
     /// A sale discount above the cashier's <c>discount.max</c> needs a supervisor: a one-time approval token
-    /// (consumed in this transaction) or the supervisor's username + PIN in the request.
+    /// (consumed in this transaction) or the supervisor's username + password in the request.
     /// </summary>
     /// <returns>The approving supervisor, or null when no approval was needed.</returns>
     private async Task<Guid?> ApproveDiscountAsync(
@@ -222,7 +222,7 @@ public sealed class SaleService(
         }
 
         if (!string.IsNullOrWhiteSpace(request.SupervisorUsername) && auth is not null)
-            return (await auth.VerifyApproverAsync(request.SupervisorUsername, request.SupervisorPin,
+            return (await auth.VerifyApproverAsync(request.SupervisorUsername, request.SupervisorPassword,
                 Permissions.SaleDiscountOverride, ct)).Id;
 
         throw new ApiException(StatusCodes.Status403Forbidden, "discount_approval_required",

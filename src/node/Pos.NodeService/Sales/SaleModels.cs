@@ -6,7 +6,7 @@ namespace Pos.NodeService.Sales;
 /// <param name="DiscountPct">Sale discount as a percentage, or</param>
 /// <param name="DiscountAmount">sale discount as an amount (not both).</param>
 /// <param name="ApprovalToken">From POST /auth/approve (action sale.discount.override), or</param>
-/// <param name="SupervisorUsername">supervisor username + PIN, when the discount is above the cashier's limit.</param>
+/// <param name="SupervisorUsername">supervisor username + password, when the discount is above the cashier's limit.</param>
 public sealed record CreateSaleRequest(
     Guid Id,
     Guid? CustomerId,
@@ -18,7 +18,7 @@ public sealed record CreateSaleRequest(
     decimal? DiscountAmount = null,
     string? ApprovalToken = null,
     string? SupervisorUsername = null,
-    string? SupervisorPin = null);
+    string? SupervisorPassword = null);
 
 /// <summary>Exactly one of <c>ProductUnitId</c> or <c>Barcode</c>. Discounts are manual and optional.</summary>
 public sealed record SaleLineRequest(

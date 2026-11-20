@@ -12,6 +12,7 @@ namespace Pos.Desktop.Tests;
 /// Drives real WPF controls on an STA thread (typing into PasswordBox/TextBox, pressing Enter) and checks
 /// that the ViewModel sees it. ViewModel-only tests cannot catch broken bindings.
 /// </summary>
+[Collection(WpfUiCollection.Name)]
 public class UiInteractionTests
 {
     private static void OnSta(Action action)
@@ -51,6 +52,18 @@ public class UiInteractionTests
             .GetPattern(System.Windows.Automation.Peers.PatternInterface.Invoke);
         invoke.Invoke();
         button.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    }
+
+    private static List<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        var found = new List<T>();
+        foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+        {
+            if (child is T match)
+                found.Add(match);
+            found.AddRange(Descendants<T>(child));
+        }
+        return found;
     }
 
     private static void PressEnter(UIElement element)
@@ -97,14 +110,14 @@ public class UiInteractionTests
     }
 
     [Fact]
-    public void Typed_pin_reaches_the_view_model_in_pin_mode()
+    public void Login_window_has_only_username_and_password_and_enter_works_from_username()
     {
         OnSta(() =>
         {
-            string? sentPin = null;
+            string? sentPassword = null;
             var api = new FakeNodeApi
             {
-                OnPinLogin = (_, pin) => { sentPin = pin; return Samples.Login(); },
+                OnLogin = (_, password) => { sentPassword = password; return Samples.Login(); },
                 OnCurrentShift = () => null,
             };
             var navigator = new FakeNavigator();
@@ -112,23 +125,17 @@ public class UiInteractionTests
             var window = ShowOffScreen(new LoginWindow { DataContext = vm });
             try
             {
-                Find<RadioButton>(window, "PinModeOption").IsChecked = true;
-                Assert.True(vm.UsePin);
-                Assert.Equal(Visibility.Visible, Find<PasswordBox>(window, "PinInput").IsVisible ? Visibility.Visible : Visibility.Collapsed);
+                // no PIN mode: no radio buttons, exactly one PasswordBox
+                Assert.Empty(Descendants<RadioButton>(window));
+                Assert.Single(Descendants<PasswordBox>(window));
 
-                Find<TextBox>(window, "UsernameBox").Text = "kasir1";
-                var pinBox = Find<PasswordBox>(window, "PinInput");
-                pinBox.Password = "123456";
-                Assert.Equal("123456", vm.Pin);
+                Find<PasswordBox>(window, "PasswordInput").Password = "kasir123";
+                var username = Find<TextBox>(window, "UsernameBox");
+                username.Text = "kasir1";
+                PressEnter(username);   // Enter from any box
 
-                PressEnter(Find<TextBox>(window, "UsernameBox"));   // Enter from any box
-
-                Assert.Equal("123456", sentPin);
+                Assert.Equal("kasir123", sentPassword);
                 Assert.Equal(["open-shift"], navigator.Shown);
-                Assert.Equal("", pinBox.Password);
-
-                Find<RadioButton>(window, "PasswordModeOption").IsChecked = true;
-                Assert.False(vm.UsePin);
             }
             finally
             {
@@ -144,7 +151,7 @@ public class UiInteractionTests
         {
             var api = new FakeNodeApi
             {
-                OnLogin = (_, _) => throw new NodeApiException("Username atau password/PIN salah.", "invalid_credentials", 401),
+                OnLogin = (_, _) => throw new NodeApiException("Username atau password salah.", "invalid_credentials", 401),
             };
             var vm = new LoginViewModel(api, new SessionState(), new FakeNavigator());
             var window = ShowOffScreen(new LoginWindow { DataContext = vm });
@@ -154,7 +161,7 @@ public class UiInteractionTests
                 Find<PasswordBox>(window, "PasswordInput").Password = "salah";
                 PressEnter(Find<PasswordBox>(window, "PasswordInput"));
 
-                Assert.Equal("Username atau password/PIN salah.", Find<TextBlock>(window, "ErrorText").Text);
+                Assert.Equal("Username atau password salah.", Find<TextBlock>(window, "ErrorText").Text);
             }
             finally
             {
