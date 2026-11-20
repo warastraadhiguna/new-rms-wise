@@ -1,0 +1,46 @@
+<Window x:Class="Pos.Desktop.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:infra="clr-namespace:Pos.Desktop.Infrastructure"
+        Title="Login Kasir" Width="420" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        FocusManager.FocusedElement="{Binding ElementName=UsernameBox}">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <infra:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
+        <infra:InverseBooleanConverter x:Key="InverseBool" />
+    </Window.Resources>
+
+    <StackPanel Margin="24">
+        <TextBlock Text="Masuk ke Kasir" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,16" />
+
+        <TextBlock Text="Username" />
+        <TextBox x:Name="UsernameBox" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                 FontSize="16" Padding="6" Margin="0,4,0,12" />
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <RadioButton GroupName="LoginMode" Content="Password" Margin="0,0,16,0"
+                         IsChecked="{Binding UsePin, Converter={StaticResource InverseBool}}" />
+            <RadioButton GroupName="LoginMode" Content="PIN (ganti kasir cepat)" IsChecked="{Binding UsePin}" />
+        </StackPanel>
+
+        <StackPanel Visibility="{Binding UsePin, Converter={StaticResource InverseBoolToVisibility}}">
+            <TextBlock Text="Password" />
+            <PasswordBox infra:PasswordBoxBinding.BoundPassword="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                         FontSize="16" Padding="6" Margin="0,4,0,12" />
+        </StackPanel>
+
+        <StackPanel Visibility="{Binding UsePin, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="PIN" />
+            <PasswordBox infra:PasswordBoxBinding.BoundPassword="{Binding Pin, UpdateSourceTrigger=PropertyChanged}"
+                         FontSize="16" Padding="6" Margin="0,4,0,12" MaxLength="8" />
+        </StackPanel>
+
+        <TextBlock Text="{Binding ErrorMessage}" Foreground="Firebrick" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+        <Button Content="Masuk" Command="{Binding LoginCommand}" IsDefault="True"
+                FontSize="16" Padding="10,6" HorizontalAlignment="Stretch" />
+        <TextBlock Text="Memproses..." Margin="0,8,0,0" HorizontalAlignment="Center"
+                   Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+    </StackPanel>
+</Window>

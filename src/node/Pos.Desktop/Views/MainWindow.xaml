@@ -1,0 +1,35 @@
+<Window x:Class="Pos.Desktop.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Kasir" Width="1024" Height="700"
+        WindowStartupLocation="CenterScreen" WindowState="Maximized">
+    <DockPanel>
+        <StatusBar DockPanel.Dock="Bottom" FontSize="14">
+            <StatusBarItem>
+                <TextBlock>
+                    <Run Text="Kasir:" />
+                    <Run Text="{Binding CashierName, Mode=OneWay}" FontWeight="SemiBold" />
+                </TextBlock>
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock>
+                    <Run Text="Shift:" />
+                    <Run Text="{Binding ShiftNumber, Mode=OneWay}" FontWeight="SemiBold" />
+                </TextBlock>
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock>
+                    <Run Text="Toko:" />
+                    <Run Text="{Binding NodeName, Mode=OneWay}" FontWeight="SemiBold" />
+                </TextBlock>
+            </StatusBarItem>
+        </StatusBar>
+
+        <Grid>
+            <TextBlock Text="Layar transaksi akan ditambahkan pada tahap berikutnya."
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="Gray" FontSize="16" />
+        </Grid>
+    </DockPanel>
+</Window>

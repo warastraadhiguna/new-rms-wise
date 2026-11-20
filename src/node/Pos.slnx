@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="Pos.Desktop.Tests/Pos.Desktop.Tests.csproj" />
   <Project Path="Pos.Desktop/Pos.Desktop.csproj" />
   <Project Path="Pos.IntegrationTests/Pos.IntegrationTests.csproj" />
   <Project Path="Pos.NodeService/Pos.NodeService.csproj" />
