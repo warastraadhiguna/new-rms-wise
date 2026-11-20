@@ -169,6 +169,7 @@
                 </TextBox>
                 <TextBlock DockPanel.Dock="Right" Text="x" VerticalAlignment="Center" Margin="6,0" />
                 <TextBox x:Name="SearchBox" Padding="2" infra:FocusBehavior.Key="search"
+                         infra:SearchNavigation.Results="{Binding ElementName=ProductGrid}"
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}">
                     <TextBox.InputBindings>
                         <KeyBinding Key="Enter" Command="{Binding SearchEnterCommand}" />

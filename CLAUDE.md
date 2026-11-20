@@ -92,6 +92,12 @@ src/android/           Kotlin app (later)
   (create the window on an STA thread, type into the TextBox/PasswordBox, press Enter or invoke the
   button, then assert on the ViewModel or the API call). ViewModel-only tests do not count: they cannot
   catch broken bindings. See `Pos.Desktop.Tests/UiInteractionTests.cs`.
+- **Every search (a search box with a results grid) uses the `SearchNavigation` behavior**
+  (`Pos.Desktop/Infrastructure/SearchNavigation.cs`): set `infra:SearchNavigation.Results="{Binding ElementName=Grid}"`
+  on the search TextBox and give the grid an Enter KeyBinding. Keys: Down in the box → first row; Up/Down move rows;
+  Enter takes the highlighted row; Up on the top row → back to the box (text kept, caret at the end); typing a
+  character in the grid → it becomes the new text of the box (barcode scans keep working). After an item is taken,
+  focus returns to the box. New searches need real-control UI tests for these keys (see `SearchNavigationUiTests.cs`).
 - Node Service: minimal APIs grouped by feature; MySqlConnector + EF Core 9 (Pomelo 9) or Dapper.
 - Async all the way for I/O. Pass `CancellationToken`.
 

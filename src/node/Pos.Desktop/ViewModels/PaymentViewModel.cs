@@ -71,6 +71,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BayarEnterCommand))]
     private bool _isBusy;
 
     /// <summary>Index for the drop-down: 0 = Potongan, 1 = Diskon.</summary>
@@ -161,7 +162,19 @@ public sealed partial class PaymentViewModel : DialogViewModel
     private void UpdateChange() =>
         Change = IsCash && MoneyInput.TryParse(BayarText, out var bayar) && bayar > GrandTotal ? bayar - GrandTotal : 0m;
 
-    /// <summary>Enter on Bayar, Keterangan or Referensi, or the Simpan button.</summary>
+    /// <summary>
+    /// Enter on Bayar. Empty Bayar = "uang pas" (owner revision): Bayar becomes the Grand Total (Kembali 0) and the
+    /// sale is saved at once, for every payment method. A typed amount that is too low still gets the message.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanSave))]
+    private Task BayarEnterAsync()
+    {
+        if (BayarText.Trim().Length == 0)
+            BayarText = Format(GrandTotal);
+        return SaveAsync();
+    }
+
+    /// <summary>Enter on Keterangan or Referensi (and Bayar after <see cref="BayarEnterAsync"/>).</summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {

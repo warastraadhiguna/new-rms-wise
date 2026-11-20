@@ -17,14 +17,15 @@
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6"
                    Visibility="{Binding IsSearchable, Converter={StaticResource BoolToVisibility}}">
             <TextBlock Text="Cari" VerticalAlignment="Center" Margin="0,0,8,0" />
-            <TextBox x:Name="QueryBox" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" Padding="3">
+            <TextBox x:Name="QueryBox" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" Padding="3"
+                     infra:SearchNavigation.Results="{Binding ElementName=ItemsGrid}">
                 <TextBox.InputBindings>
                     <KeyBinding Key="Enter" Command="{Binding ChooseCommand}" />
                 </TextBox.InputBindings>
             </TextBox>
         </DockPanel>
         <TextBlock x:Name="ErrorText" DockPanel.Dock="Bottom" Text="{Binding ErrorMessage}" Foreground="Firebrick" Margin="0,6,0,0" />
-        <TextBlock DockPanel.Dock="Bottom" Text="Enter = pilih, Esc = batal" Foreground="Gray" Margin="0,6,0,0" />
+        <TextBlock DockPanel.Dock="Bottom" Text="↓ = ke daftar, ↑ di baris teratas = ke kotak cari, Enter = pilih, Esc = batal" Foreground="Gray" Margin="0,6,0,0" />
         <DataGrid x:Name="ItemsGrid" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}"
                   AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" RowHeight="22"
                   CanUserAddRows="False" CanUserDeleteRows="False" GridLinesVisibility="All"

@@ -110,6 +110,74 @@ public class PaymentUiTests
         Assert.True(HasFocus(bayar));
     });
 
+    private static readonly CustomerItem CreditCustomer =
+        new(Guid.CreateVersion7(), "C000001", "Budi Pelanggan", null, 500000m, 0m, 500000m, 14, 0);
+
+    [Theory]
+    [InlineData("CASH", 13700)]          // cash: the rounded Grand Total
+    [InlineData("DEBIT", 13680)]
+    [InlineData("QRIS", 13680)]
+    [InlineData("TRANSFER", 13680)]
+    [InlineData("CREDIT", 13680)]
+    public void Enter_on_an_empty_bayar_pays_the_exact_amount_and_saves(string method, int expected) =>
+        WithDialog(Cart13680(), (window, vm) =>
+        {
+            Find<ComboBox>(window, "MethodBox").SelectedItem = _api.Config.PaymentMethods.Single(m => m.Code == method);
+            DoEvents();
+            var bayar = Find<TextBox>(window, "BayarBox");
+            bayar.Focus();
+            bayar.Clear();                                   // non-cash fills Bayar; the cashier may have emptied it
+            Assert.Equal("", bayar.Text);
+
+            PressKey(bayar, Key.Enter);
+
+            var request = Assert.Single(_api.SaleRequests);
+            Assert.Equal((method, (decimal)expected), (request.Payments[0].Method, request.Payments[0].Amount));
+            Assert.Equal(expected.ToString("#,0", System.Globalization.CultureInfo.GetCultureInfo("id-ID")), bayar.Text);
+            Assert.Equal("0", Find<TextBox>(window, "ChangeBox").Text);
+            Assert.True(vm.DialogResult);
+            Assert.False(window.IsVisible);
+        }, customer: method == "CREDIT" ? CreditCustomer : null);
+
+    [Fact]
+    public void Enter_on_an_empty_bayar_right_after_opening_saves_cash_uang_pas() => WithDialog(Cart13680(), (window, _) =>
+    {
+        var bayar = Find<TextBox>(window, "BayarBox");
+        Assert.True(HasFocus(bayar));
+
+        PressKey(bayar, Key.Enter);
+
+        Assert.Equal(13700m, Assert.Single(_api.SaleRequests).Payments[0].Amount);
+    });
+
+    [Fact]
+    public void Enter_on_an_empty_bayar_after_a_potongan_pays_the_new_grand_total() => WithDialog(Cart13680(), (window, _) =>
+    {
+        var discount = Find<TextBox>(window, "DiscountBox");
+        discount.Focus();
+        discount.SelectAll();
+        Type(discount, "1000");
+        PressKey(discount, Key.Enter);                       // moves to Bayar
+
+        PressKey(Find<TextBox>(window, "BayarBox"), Key.Enter);
+
+        var request = Assert.Single(_api.SaleRequests);
+        Assert.Equal(12700m, request.Payments[0].Amount);
+        Assert.Equal(1000m, request.DiscountAmount);
+    });
+
+    [Fact]
+    public void Enter_on_an_empty_keterangan_with_an_empty_bayar_still_says_too_little() => WithDialog(Cart13680(), (window, _) =>
+    {
+        var notes = Find<TextBox>(window, "NotesBox");
+        notes.Focus();
+
+        PressKey(notes, Key.Enter);
+
+        Assert.Empty(_api.SaleRequests);
+        Assert.Equal("Jumlah bayar kurang dari total.", Find<TextBlock>(window, "ErrorText").Text);
+    });
+
     [Fact]
     public void Enter_in_potongan_moves_to_bayar_and_updates_grand_total() => WithDialog(Cart13680(), (window, vm) =>
     {

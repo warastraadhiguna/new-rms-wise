@@ -85,7 +85,7 @@
             <TextBlock Grid.Row="4" Text="Bayar" Style="{StaticResource Label}" />
             <TextBox Grid.Row="4" Grid.Column="1" x:Name="BayarBox" Style="{StaticResource Input}" FontSize="26" Padding="3,4"
                      infra:MoneyBox.IsEnabled="True"
-                     infra:FocusBehavior.Key="bayar" infra:EnterNavigation.SubmitCommand="{Binding SaveCommand}"
+                     infra:FocusBehavior.Key="bayar" infra:EnterNavigation.SubmitCommand="{Binding BayarEnterCommand}"
                      Text="{Binding BayarText, UpdateSourceTrigger=PropertyChanged}" />
 
             <!-- 5 Kembali (large, right aligned) -->

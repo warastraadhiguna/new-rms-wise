@@ -396,6 +396,118 @@ public class SalesViewUiTests
         Assert.Contains("Gagal mencetak", Find<TextBlock>(view, "StatusText").Text);
     });
 
+    // ---- keyboard navigation between Cari and the product grid (SearchNavigation) -------------------
+
+    private static UIElement Focused(FrameworkElement scope) =>
+        (UIElement)FocusManager.GetFocusedElement(FocusManager.GetFocusScope(scope))!;
+
+    /// <summary>Types "a" in Cari: all three sample products are listed.</summary>
+    private static (TextBox Search, DataGrid Grid) ListAll(SalesView view)
+    {
+        var search = Find<TextBox>(view, "SearchBox");
+        Type(search, "a");
+        var grid = Find<DataGrid>(view, "ProductGrid");
+        grid.UpdateLayout();
+        Assert.Equal(3, grid.Items.Count);
+        return (search, grid);
+    }
+
+    private static void Type(UIElement element, string text)
+    {
+        foreach (var c in text)
+            TypeChar(element, c.ToString());
+    }
+
+    [Fact]
+    public void Down_in_cari_goes_to_the_first_row_of_the_results() => WithForm((view, vm) =>
+    {
+        var (search, grid) = ListAll(view);
+
+        PressKey(search, Key.Down);
+
+        Assert.Equal(0, grid.SelectedIndex);
+        Assert.True(IsInside(grid, Focused(view)), Focused(view).GetType().Name);
+        Assert.Same(vm.Products[0], vm.SelectedProduct);
+    });
+
+    [Fact]
+    public void Down_in_cari_without_results_stays_in_cari() => WithForm((view, _) =>
+    {
+        var search = Find<TextBox>(view, "SearchBox");
+
+        PressKey(search, Key.Down);
+
+        Assert.True(HasFocus(search));
+    });
+
+    [Fact]
+    public void Up_and_down_move_rows_and_enter_adds_that_row_then_focus_returns_to_cari() => WithForm((view, vm) =>
+    {
+        var (search, grid) = ListAll(view);
+        PressKey(search, Key.Down);
+
+        PressKey(Focused(view), Key.Down);
+        PressKey(Focused(view), Key.Down);
+        PressKey(Focused(view), Key.Down);                       // already on the last row: stays
+        Assert.Equal(2, grid.SelectedIndex);
+        PressKey(Focused(view), Key.Up);
+        Assert.Equal(1, grid.SelectedIndex);
+        Assert.True(IsInside(grid, Focused(view)));
+        var expected = vm.Products[1].Sku;
+
+        PressKey(Focused(view), Key.Enter);
+
+        Assert.Equal(expected, Assert.Single(vm.Lines).Code);    // the highlighted row, not the one below it
+        Assert.True(HasFocus(search));
+    });
+
+    [Fact]
+    public void Up_on_the_first_row_returns_to_cari_with_the_text_and_caret_at_the_end() => WithForm((view, _) =>
+    {
+        var (search, grid) = ListAll(view);
+        PressKey(search, Key.Down);
+        PressKey(Focused(view), Key.Down);
+        PressKey(Focused(view), Key.Up);
+        Assert.Equal(0, grid.SelectedIndex);
+
+        PressKey(Focused(view), Key.Up);
+
+        Assert.True(HasFocus(search));
+        Assert.Equal("a", search.Text);
+        Assert.Equal(1, search.CaretIndex);
+    });
+
+    [Fact]
+    public void Typing_in_the_grid_moves_to_cari_so_a_barcode_scan_still_works() => WithForm((view, vm) =>
+    {
+        var (search, _) = ListAll(view);
+        PressKey(search, Key.Down);
+
+        foreach (var c in "13589")                                // the scanner types into whatever has focus
+            TypeChar(Focused(view), c.ToString());
+        Assert.True(HasFocus(search));
+        Assert.Equal("13589", search.Text);
+        PressKey(Focused(view), Key.Enter);
+
+        Assert.Equal("13589", Assert.Single(vm.Lines).Code);
+        Assert.True(HasFocus(search));
+        Assert.Equal("", search.Text);
+    });
+
+    [Fact]
+    public void Star_typed_in_the_grid_is_still_the_multiplier_not_search_text() => WithForm((view, vm) =>
+    {
+        Scan(view, "13589");
+        var (search, _) = ListAll(view);
+        PressKey(search, Key.Down);
+
+        TypeChar(Focused(view), "*");
+
+        Assert.True(vm.IsMultiplierMode);
+        Assert.Equal("a", search.Text);
+        Assert.True(HasFocus(Find<TextBox>(view, "QtyBox")));
+    });
+
     [Fact]
     public void Stock_warning_is_shown_under_the_form() => WithForm((view, _) =>
     {
