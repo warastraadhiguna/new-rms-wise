@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Pos.Desktop/Pos.Desktop.csproj" />
+  <Project Path="Pos.NodeService/Pos.NodeService.csproj" />
+  <Project Path="Pos.Shared/Pos.Shared.csproj" />
+  <Project Path="Pos.Tests/Pos.Tests.csproj" />
+</Solution>

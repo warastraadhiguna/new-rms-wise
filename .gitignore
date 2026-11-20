@@ -1,0 +1,28 @@
+# .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+TestResults/
+*.DotSettings.user
+
+# Laravel / PHP / Node
+src/hq/vendor/
+src/hq/node_modules/
+src/hq/.env
+src/hq/storage/*.key
+node_modules/
+
+# Android
+src/android/.gradle/
+src/android/build/
+src/android/local.properties
+src/android/**/build/
+
+# Local secrets and settings
+appsettings.Local.json
+*.pfx
+.env
+.env.*
+!.env.example
