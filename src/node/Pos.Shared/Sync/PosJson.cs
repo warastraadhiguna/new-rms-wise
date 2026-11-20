@@ -10,6 +10,7 @@ public static class SyncDocTypes
     public const string Sale = "SALE";
     public const string CashierShift = "CASHIER_SHIFT";
     public const string StockAdjustment = "STOCK_ADJUSTMENT";
+    public const string CartCancellation = "CART_CANCELLATION";
 }
 
 /// <summary>

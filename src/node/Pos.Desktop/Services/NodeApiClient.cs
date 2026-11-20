@@ -37,6 +37,28 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
         SendAsync<ShiftInfo>(HttpMethod.Post, "api/v1/shifts/open", new { OpeningCash = openingCash },
             authenticated: true, withDevice: true, ct);
 
+    public async Task<IReadOnlyList<ProductItem>> SearchProductsAsync(string query, CancellationToken ct = default) =>
+        await SendAsync<List<ProductItem>>(HttpMethod.Get, "api/v1/products/search?q=" + Uri.EscapeDataString(query), null,
+            authenticated: true, withDevice: false, ct);
+
+    public async Task<IReadOnlyList<ProductItem>> GetProductUnitsAsync(Guid productId, CancellationToken ct = default) =>
+        await SendAsync<List<ProductItem>>(HttpMethod.Get, $"api/v1/products/{productId}/units", null,
+            authenticated: true, withDevice: false, ct);
+
+    public async Task<IReadOnlyList<CustomerItem>> SearchCustomersAsync(string query, CancellationToken ct = default) =>
+        await SendAsync<List<CustomerItem>>(HttpMethod.Get, "api/v1/customers/search?q=" + Uri.EscapeDataString(query), null,
+            authenticated: true, withDevice: false, ct);
+
+    public Task<ApprovalResult> ApproveAsync(string action, string username, string password, CancellationToken ct = default) =>
+        SendAsync<ApprovalResult>(HttpMethod.Post, "api/v1/auth/approve", new { Action = action, Username = username, Password = password },
+            authenticated: true, withDevice: false, ct);
+
+    public Task<CartCancellationResult> CancelCartAsync(
+        Guid id, string reason, decimal totalAmount, IReadOnlyList<CartCancellationLine> lines, CancellationToken ct = default) =>
+        SendAsync<CartCancellationResult>(HttpMethod.Post, "api/v1/cart-cancellations",
+            new { Id = id, Reason = reason, TotalAmount = totalAmount, Lines = lines },
+            authenticated: true, withDevice: true, ct);
+
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, bool authenticated, bool withDevice,
         CancellationToken ct)
     {

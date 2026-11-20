@@ -20,6 +20,58 @@ public sealed record ShiftInfo(
     DateTime OpenedAt,
     decimal OpeningCash);
 
+public sealed record PriceTierInfo(decimal MinQty, decimal Price);
+
+/// <summary>A product unit from /products/search or /products/{id}/units.</summary>
+public sealed record ProductItem(
+    Guid ProductId,
+    Guid ProductUnitId,
+    string Sku,
+    string Name,
+    string? Barcode,
+    string UnitCode,
+    string UnitName,
+    decimal Conversion,
+    bool AllowDecimal,
+    bool AllowQtyMultiplier,
+    bool TrackExpiry,
+    string? Brand,
+    string? Category,
+    string? ShelfLocation,
+    decimal? Price,
+    decimal? DiscountPrice,
+    IReadOnlyList<PriceTierInfo> PriceTiers,
+    decimal StockBaseQty,
+    decimal StockQty,
+    string MatchedBy)
+{
+    public bool IsExactMatch => MatchedBy is "barcode" or "sku";
+
+    public Pos.Shared.Sales.CartItem ToCartItem() => new(
+        ProductId, ProductUnitId, Sku, Name, UnitCode, Conversion, AllowDecimal, AllowQtyMultiplier,
+        PriceTiers.Select(t => new Pos.Shared.Sales.PriceTier(t.MinQty, t.Price)).ToList(), StockBaseQty);
+}
+
+public sealed record CustomerItem(
+    Guid Id,
+    string Code,
+    string Name,
+    string? Phone,
+    decimal? CreditLimit,
+    decimal CreditOutstanding,
+    decimal? CreditRemaining,
+    short? PaymentTermDays,
+    int Points)
+{
+    public string Display => $"{Code} - {Name}";
+}
+
+public sealed record ApprovalResult(string ApprovalToken, string Action, DateTime ExpiresAt, UserInfo ApprovedBy);
+
+public sealed record CartCancellationLine(Guid ProductUnitId, decimal Qty, decimal UnitPrice, decimal LineTotal);
+
+public sealed record CartCancellationResult(Guid Id, string Number, string Reason, decimal TotalAmount);
+
 /// <summary>Node Service calls used by the cashier screens.</summary>
 public interface INodeApi
 {
@@ -29,6 +81,42 @@ public interface INodeApi
     Task<ShiftInfo?> GetCurrentShiftAsync(CancellationToken ct = default);
 
     Task<ShiftInfo> OpenShiftAsync(decimal openingCash, CancellationToken ct = default);
+
+    Task<IReadOnlyList<ProductItem>> SearchProductsAsync(string query, CancellationToken ct = default);
+
+    Task<IReadOnlyList<ProductItem>> GetProductUnitsAsync(Guid productId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<CustomerItem>> SearchCustomersAsync(string query, CancellationToken ct = default);
+
+    /// <summary>Supervisor username + password approve one action for the logged-in user.</summary>
+    Task<ApprovalResult> ApproveAsync(string action, string username, string password, CancellationToken ct = default);
+
+    Task<CartCancellationResult> CancelCartAsync(
+        Guid id, string reason, decimal totalAmount, IReadOnlyList<CartCancellationLine> lines, CancellationToken ct = default);
+}
+
+public sealed record SupervisorCredentials(string Username, string Password);
+
+/// <summary>Modal dialogs used by the sales screen (fakes in tests, WPF windows in the app).</summary>
+public interface IDialogService
+{
+    /// <returns>The new quantity, or null when cancelled.</returns>
+    decimal? AskQuantity(string productName, decimal current);
+
+    /// <returns>Supervisor username + password, or null when cancelled.</returns>
+    SupervisorCredentials? AskSupervisor(string purpose);
+
+    /// <returns>The reason (never blank), or null when cancelled.</returns>
+    string? AskCancelReason();
+
+    bool Confirm(string message);
+
+    /// <summary>F1: large product search; returns the chosen unit or null.</summary>
+    ProductItem? PickProduct(string initialQuery);
+
+    ProductItem? PickUnit(string productName, IReadOnlyList<ProductItem> units, Guid currentUnitId);
+
+    CustomerItem? PickCustomer(string initialQuery);
 }
 
 /// <summary>Switches between the top-level windows.</summary>

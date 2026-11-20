@@ -9,8 +9,9 @@ public static class DocumentTypes
     public const string Sale = "SL";
     public const string CashierShift = "SH";
     public const string StockAdjustment = "ADJ";
+    public const string CartCancellation = "BT";
 
-    public static IReadOnlyList<string> All { get; } = [Sale, CashierShift, StockAdjustment];
+    public static IReadOnlyList<string> All { get; } = [Sale, CashierShift, StockAdjustment, CartCancellation];
 }
 
 /// <summary>

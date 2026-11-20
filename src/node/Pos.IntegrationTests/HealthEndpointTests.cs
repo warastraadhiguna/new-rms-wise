@@ -21,8 +21,8 @@ public class HealthEndpointTests(DatabaseFixture db)
         var database = root.GetProperty("database");
         Assert.Equal("ok", root.GetProperty("status").GetString());
         Assert.Equal("ok", database.GetProperty("status").GetString());
-        Assert.Equal("0003", database.GetProperty("migration_version").GetString());
-        Assert.Equal("0003_cashier_screen.sql", database.GetProperty("migration_script").GetString());
+        Assert.Equal("0004", database.GetProperty("migration_version").GetString());
+        Assert.Equal("0004_cart_cancellations.sql", database.GetProperty("migration_script").GetString());
         Assert.Equal("MySQL", database.GetProperty("server_product").GetString());
         Assert.Matches(@"^\d+\.\d+\.\d+", database.GetProperty("server_version").GetString());
         Assert.Equal("TK01", root.GetProperty("node").GetProperty("code").GetString());

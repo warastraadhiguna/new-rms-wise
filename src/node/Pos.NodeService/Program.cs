@@ -51,6 +51,7 @@ builder.Services.AddSingleton(sp => new SaleService(
     sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<NodeIdentity>(), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<AuthService>()));
 builder.Services.AddSingleton<Pos.NodeService.Catalog.ProductSearchService>();
+builder.Services.AddSingleton<CartCancellationService>();
 builder.Services.AddSingleton<Pos.NodeService.Customers.CustomerSearchService>();
 builder.Services.AddSingleton<DevSeeder>(sp => new DevSeeder(
     sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<TimeProvider>(),

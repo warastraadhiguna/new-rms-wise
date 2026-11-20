@@ -43,7 +43,14 @@ public partial class App : Application
 
         services.AddTransient<LoginViewModel>();
         services.AddTransient<OpenShiftViewModel>();
-        services.AddTransient<MainViewModel>();
+        services.AddSingleton<IDialogService, WpfDialogService>();
+        services.AddSingleton<ICartStore>(_ => new FileCartStore(FileCartStore.PathFor(settings.DeviceId)));
+        services.AddSingleton<IViewSettingsStore>(_ => new FileViewSettingsStore(FileViewSettingsStore.DefaultPath));
+        services.AddTransient(sp => new SalesViewModel(
+            sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<SessionState>(), sp.GetRequiredService<IDialogService>(),
+            sp.GetRequiredService<ICartStore>(), sp.GetRequiredService<IViewSettingsStore>()));
+        services.AddTransient<Func<SalesViewModel>>(sp => () => sp.GetRequiredService<SalesViewModel>());
+        services.AddTransient(sp => new MainViewModel(sp.GetRequiredService<SessionState>(), sp.GetRequiredService<Func<SalesViewModel>>()));
         services.AddTransient<LoginWindow>();
         services.AddTransient<OpenShiftWindow>();
         services.AddTransient<MainWindow>();

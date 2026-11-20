@@ -49,7 +49,22 @@ public static class ApiEndpoints
             .AddEndpointFilter<DeviceFilter>()
             .RequireAuthorization(Permissions.SaleCreate);
 
+        // F12 "Batal": a cancelled cart with its reason (201 created, 200 when the id was already stored).
+        api.MapPost("/cart-cancellations", async (CartCancellationRequest request, CartCancellationService service, HttpContext http, ClaimsPrincipal user, CancellationToken ct) =>
+            {
+                var permissions = PermissionSet.FromNames(user.FindAll(TokenService.PermissionClaim).Select(c => c.Value));
+                var result = await service.CreateAsync(request, DeviceFilter.DeviceId(http), user.UserId(), permissions, ct);
+                return result.Replayed
+                    ? Results.Ok(result.Cancellation)
+                    : Results.Created($"/api/v1/cart-cancellations/{result.Cancellation.Id}", result.Cancellation);
+            })
+            .AddEndpointFilter<DeviceFilter>()
+            .RequireAuthorization(Permissions.SaleCreate);
+
         api.MapGet("/products/search", (string? q, ProductSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
+            .RequireAuthorization(Permissions.SaleCreate);
+        api.MapGet("/products/{productId:guid}/units", (Guid productId, ProductSearchService service, CancellationToken ct) =>
+                service.GetUnitsAsync(productId, ct))
             .RequireAuthorization(Permissions.SaleCreate);
         api.MapGet("/customers/search", (string? q, CustomerSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
             .RequireAuthorization(Permissions.SaleCreate);
