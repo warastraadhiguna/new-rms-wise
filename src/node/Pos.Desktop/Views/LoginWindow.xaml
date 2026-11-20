@@ -5,6 +5,10 @@
         Title="Login Kasir" Width="420" SizeToContent="Height"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
         FocusManager.FocusedElement="{Binding ElementName=UsernameBox}">
+    <!-- Enter in any field logs in (one binding for the whole window, no default-button double trigger). -->
+    <Window.InputBindings>
+        <KeyBinding Key="Enter" Command="{Binding LoginCommand}" />
+    </Window.InputBindings>
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <infra:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
@@ -19,26 +23,26 @@
                  FontSize="16" Padding="6" Margin="0,4,0,12" />
 
         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-            <RadioButton GroupName="LoginMode" Content="Password" Margin="0,0,16,0"
+            <RadioButton x:Name="PasswordModeOption" GroupName="LoginMode" Content="Password" Margin="0,0,16,0"
                          IsChecked="{Binding UsePin, Converter={StaticResource InverseBool}}" />
-            <RadioButton GroupName="LoginMode" Content="PIN (ganti kasir cepat)" IsChecked="{Binding UsePin}" />
+            <RadioButton x:Name="PinModeOption" GroupName="LoginMode" Content="PIN (ganti kasir cepat)" IsChecked="{Binding UsePin}" />
         </StackPanel>
 
         <StackPanel Visibility="{Binding UsePin, Converter={StaticResource InverseBoolToVisibility}}">
             <TextBlock Text="Password" />
-            <PasswordBox infra:PasswordBoxBinding.BoundPassword="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+            <PasswordBox x:Name="PasswordInput" infra:PasswordBoxBinding.BoundPassword="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
                          FontSize="16" Padding="6" Margin="0,4,0,12" />
         </StackPanel>
 
         <StackPanel Visibility="{Binding UsePin, Converter={StaticResource BoolToVisibility}}">
             <TextBlock Text="PIN" />
-            <PasswordBox infra:PasswordBoxBinding.BoundPassword="{Binding Pin, UpdateSourceTrigger=PropertyChanged}"
+            <PasswordBox x:Name="PinInput" infra:PasswordBoxBinding.BoundPassword="{Binding Pin, UpdateSourceTrigger=PropertyChanged}"
                          FontSize="16" Padding="6" Margin="0,4,0,12" MaxLength="8" />
         </StackPanel>
 
-        <TextBlock Text="{Binding ErrorMessage}" Foreground="Firebrick" TextWrapping="Wrap" Margin="0,0,0,8" />
+        <TextBlock x:Name="ErrorText" Text="{Binding ErrorMessage}" Foreground="Firebrick" TextWrapping="Wrap" Margin="0,0,0,8" />
 
-        <Button Content="Masuk" Command="{Binding LoginCommand}" IsDefault="True"
+        <Button x:Name="LoginButton" Content="Masuk (Enter)" Command="{Binding LoginCommand}"
                 FontSize="16" Padding="10,6" HorizontalAlignment="Stretch" />
         <TextBlock Text="Memproses..." Margin="0,8,0,0" HorizontalAlignment="Center"
                    Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />

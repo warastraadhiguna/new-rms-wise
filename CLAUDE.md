@@ -29,7 +29,11 @@ src/node/              C# solution (Pos.slnx)
   Pos.Shared/          domain logic: money, units, stock ledger, FEFO, numbering, sync contracts
   Pos.NodeService/     ASP.NET Core API + sync agent + migration runner (DbUp)
   Pos.Desktop/         WPF client (MVVM)
-  Pos.Tests/           xUnit tests
+  Pos.Tests/           xUnit tests for Pos.Shared (pure, no database, no UI)
+  Pos.IntegrationTests/ Node Service against a real MySQL `*_test` database (POS_TEST_DB or
+                       git-ignored testsettings.Local.json; skipped when not configured)
+  Pos.Desktop.Tests/   WPF client: ViewModels, HTTP client with a fake server, and UI tests
+                       that drive real controls on an STA thread
 src/hq/                Laravel app (later)
 src/android/           Kotlin app (later)
 ```
@@ -81,6 +85,10 @@ src/android/           Kotlin app (later)
 - .NET 10, nullable enabled, implicit usings, file-scoped namespaces.
 - Business logic goes in `Pos.Shared` as plain classes with no DB/UI dependency, so it is testable.
 - WPF uses MVVM (CommunityToolkit.Mvvm). No business logic in code-behind.
+- **Every WPF UI change needs at least one test that interacts through real controls**
+  (create the window on an STA thread, type into the TextBox/PasswordBox, press Enter or invoke the
+  button, then assert on the ViewModel or the API call). ViewModel-only tests do not count: they cannot
+  catch broken bindings. See `Pos.Desktop.Tests/UiInteractionTests.cs`.
 - Node Service: minimal APIs grouped by feature; MySqlConnector + EF Core 9 (Pomelo 9) or Dapper.
 - Async all the way for I/O. Pass `CancellationToken`.
 

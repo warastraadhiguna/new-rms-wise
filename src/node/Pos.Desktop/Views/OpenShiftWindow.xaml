@@ -4,6 +4,10 @@
         Title="Buka Shift" Width="420" SizeToContent="Height"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
         FocusManager.FocusedElement="{Binding ElementName=OpeningCashBox}">
+    <!-- Enter = Buka Shift from anywhere in the window. -->
+    <Window.InputBindings>
+        <KeyBinding Key="Enter" Command="{Binding OpenShiftCommand}" />
+    </Window.InputBindings>
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     </Window.Resources>
@@ -28,9 +32,9 @@
                 <ColumnDefinition Width="12" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" Content="Batal (Keluar)" Command="{Binding CancelCommand}" IsCancel="True"
+            <Button x:Name="CancelButton" Grid.Column="0" Content="Batal (Keluar)" Command="{Binding CancelCommand}" IsCancel="True"
                     FontSize="16" Padding="10,6" />
-            <Button Grid.Column="2" Content="Buka Shift" Command="{Binding OpenShiftCommand}" IsDefault="True"
+            <Button x:Name="OpenShiftButton" Grid.Column="2" Content="Buka Shift (Enter)" Command="{Binding OpenShiftCommand}"
                     FontSize="16" Padding="10,6" />
         </Grid>
         <TextBlock Text="Memproses..." Margin="0,8,0,0" HorizontalAlignment="Center"
