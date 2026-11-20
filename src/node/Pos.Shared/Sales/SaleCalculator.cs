@@ -63,7 +63,7 @@ public sealed record SaleTotals(
     IReadOnlyList<PaymentAllocation> Payments);
 
 /// <summary>
-/// Sale header totals and payment validation. Cash rounding applies only when cash is used.
+/// Sale header totals and payment validation. Cash rounding applies only when cash is used and nothing is on credit.
 /// Rules: payments >= total; non-cash and credit together never exceed the total (change only from cash);
 /// at most one cash payment; credit needs a customer.
 /// </summary>
@@ -87,11 +87,13 @@ public static class SaleCalculator
         if (payments.Count(p => p.Kind == PaymentKind.Cash) > 1)
             throw new SaleValidationException("multiple_cash_payments", "Use one cash payment per sale.");
 
-        var hasCash = payments.Any(p => p.Kind == PaymentKind.Cash);
+        // Owner decision: cash rounding only for sales paid in cash without any credit; KREDIT (with or without a
+        // cash DP) is never rounded.
+        var rounds = payments.Any(p => p.Kind == PaymentKind.Cash) && payments.All(p => p.Kind != PaymentKind.Credit);
         var subtotal = lineTotals.Sum();
         var discountAmount = HeaderDiscountAmount(discount, subtotal, currencyDecimals);
         var afterDiscount = subtotal - discountAmount;
-        var (total, roundingAmount) = hasCash
+        var (total, roundingAmount) = rounds
             ? Rupiah.RoundCash(afterDiscount, rounding.Step, rounding.Mode)
             : new CashRoundingResult(afterDiscount, 0m);
 

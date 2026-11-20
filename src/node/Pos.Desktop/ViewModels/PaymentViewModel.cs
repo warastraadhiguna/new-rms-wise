@@ -176,12 +176,13 @@ public sealed partial class PaymentViewModel : DialogViewModel
     }
 
     /// <summary>
-    /// Same rule as the server: cash rounding only when cash is paid, i.e. TUNAI, or KREDIT with a DP above zero.
+    /// Same rule as the server (owner decision): cash rounding only for TUNAI; KREDIT is never rounded, so the
+    /// Grand Total stays the same while the DP is typed.
     /// </summary>
     private decimal ComputeGrandTotal()
     {
         var afterDiscount = Total - DiscountAmount;
-        var cashUsed = IsCash || (IsCredit && ReadDownPayment() is > 0);
+        var cashUsed = IsCash;
         return cashUsed ? Rupiah.RoundCash(afterDiscount, Rounding.Step, Rounding.Mode).Total : afterDiscount;
     }
 
@@ -312,7 +313,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
     }
 
     /// <summary>
-    /// KREDIT: a Member is required; the DP (0..Grand Total) is paid as TUNAI and the rest is the receivable, so the
+    /// KREDIT: a Member is required; the DP (0 up to, not including, the Grand Total) is paid as TUNAI and the rest is the receivable, so the
     /// server records exactly that rest as credit.
     /// </summary>
     private List<PaidWith>? CreditPayments(PaymentMethodInfo credit)
@@ -332,9 +333,10 @@ public sealed partial class PaymentViewModel : DialogViewModel
         }
 
         var grandTotal = ComputeGrandTotal();
-        if (dp > grandTotal)
+        if (dp >= grandTotal && grandTotal > 0)
         {
-            ErrorMessage = "Uang muka tidak boleh melebihi Grand Total.";
+            // DP = Grand Total would leave nothing on credit: the server would treat it as a TUNAI sale and round it.
+            ErrorMessage = "Uang muka harus kurang dari Grand Total. Kalau dibayar penuh, pilih cara bayar TUNAI.";
             Focus("bayar");
             return null;
         }

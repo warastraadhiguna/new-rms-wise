@@ -111,6 +111,28 @@ public class SaleCalculatorTests
     }
 
     [Fact]
+    public void Credit_sale_with_a_cash_down_payment_is_never_rounded()
+    {
+        // owner decision: KREDIT is never rounded, DP or rest; 50.050 stays 50.050
+        var t = Calc([50050m], [Cash("20000"), Credit("30050")], hasCustomer: true);
+
+        Assert.Equal(50050m, t.Total);
+        Assert.Equal(0m, t.RoundingAmount);
+        Assert.Equal(30050m, t.CreditAmount);
+        Assert.Equal(0m, t.Change);
+        Assert.Equal(20000m, t.Payments[0].Applied);
+    }
+
+    [Fact]
+    public void Credit_sale_dp_cannot_rely_on_rounding_down()
+    {
+        // without rounding 50.050 needs 20.000 + 30.050; 20.000 + 30.000 is short by 50
+        var ex = Assert.Throws<SaleValidationException>(() => Calc([50050m], [Cash("20000"), Credit("30000")], hasCustomer: true));
+
+        Assert.Equal("insufficient_payment", ex.Code);
+    }
+
+    [Fact]
     public void Full_credit_sale_is_not_rounded()
     {
         var t = Calc([50050m], [Credit("50050")], hasCustomer: true);

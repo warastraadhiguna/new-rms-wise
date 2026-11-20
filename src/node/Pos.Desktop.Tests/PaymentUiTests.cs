@@ -230,13 +230,13 @@ public class PaymentUiTests
         Type(dp, "5000");
 
         Assert.Equal("5.000", dp.Text);
-        Assert.Equal("13.700", Find<TextBox>(window, "GrandTotalBox").Text);      // cash paid → rounded like the server
-        Assert.Equal("8.700", Find<TextBox>(window, "ChangeBox").Text);           // Sisa Piutang
+        Assert.Equal("13.680", Find<TextBox>(window, "GrandTotalBox").Text);      // KREDIT is never rounded
+        Assert.Equal("8.680", Find<TextBox>(window, "ChangeBox").Text);           // Sisa Piutang
 
         PressKey(dp, Key.Enter);
 
         var request = Assert.Single(_api.SaleRequests);
-        Assert.Equal([("CASH", 5000m), ("CREDIT", 8700m)], request.Payments.Select(p => (p.Method, p.Amount)));
+        Assert.Equal([("CASH", 5000m), ("CREDIT", 8680m)], request.Payments.Select(p => (p.Method, p.Amount)));
     }, customer: CreditCustomer);
 
     [Fact]
@@ -250,23 +250,41 @@ public class PaymentUiTests
         PressKey(dp, Key.Enter);
 
         Assert.Empty(_api.SaleRequests);
-        Assert.Equal("Uang muka tidak boleh melebihi Grand Total.", Find<TextBlock>(window, "ErrorText").Text);
+        Assert.Equal("Uang muka harus kurang dari Grand Total. Kalau dibayar penuh, pilih cara bayar TUNAI.", Find<TextBlock>(window, "ErrorText").Text);
         Assert.True(window.IsVisible);
         Assert.True(HasFocus(dp));
     }, customer: CreditCustomer);
 
     [Fact]
-    public void Kredit_dp_equal_to_the_grand_total_leaves_nothing_on_credit() => WithDialog(Cart13680(), (window, _) =>
+    public void Kredit_dp_equal_to_the_grand_total_is_refused_use_tunai_instead() => WithDialog(Cart13680(), (window, _) =>
     {
         SelectCredit(window);
         var dp = Find<TextBox>(window, "BayarBox");
         dp.Focus();
-        Type(dp, "13700");
+        Type(dp, "13680");
         Assert.Equal("0", Find<TextBox>(window, "ChangeBox").Text);
 
         PressKey(dp, Key.Enter);
 
-        Assert.Equal([("CASH", 13700m)], Assert.Single(_api.SaleRequests).Payments.Select(p => (p.Method, p.Amount)));
+        Assert.Empty(_api.SaleRequests);
+        Assert.Equal("Uang muka harus kurang dari Grand Total. Kalau dibayar penuh, pilih cara bayar TUNAI.",
+            Find<TextBlock>(window, "ErrorText").Text);
+    }, customer: CreditCustomer);
+
+    [Fact]
+    public void Kredit_grand_total_never_changes_while_the_dp_is_typed() => WithDialog(Cart13680(), (window, _) =>
+    {
+        SelectCredit(window);
+        var dp = Find<TextBox>(window, "BayarBox");
+        var grandTotal = Find<TextBox>(window, "GrandTotalBox");
+        dp.Focus();
+
+        foreach (var c in "12345")
+        {
+            TypeChar(dp, c.ToString());
+            Assert.Equal("13.680", grandTotal.Text);
+        }
+        Assert.Equal("1.335", Find<TextBox>(window, "ChangeBox").Text);       // 13.680 - 12.345
     }, customer: CreditCustomer);
 
     [Fact]

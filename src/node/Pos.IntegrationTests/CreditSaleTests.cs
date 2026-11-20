@@ -7,7 +7,7 @@ namespace Pos.IntegrationTests;
 
 /// <summary>
 /// KREDIT as the desktop sends it (Form Bayar Nota): DP as a CASH payment (only when above 0) plus the rest as
-/// CREDIT, so the receivable is exactly that rest. Cash rounding applies only when a DP is paid.
+/// CREDIT, so the receivable is exactly that rest. KREDIT is never cash-rounded, with or without a DP (owner decision).
 /// </summary>
 [Collection(DatabaseCollection.Name)]
 public class CreditSaleTests(DatabaseFixture db) : IAsyncLifetime
@@ -40,7 +40,7 @@ public class CreditSaleTests(DatabaseFixture db) : IAsyncLifetime
         return device;
     }
 
-    /// <summary>One line of 13.680 (cash rounding step 100 → 13.700 when cash is paid).</summary>
+    /// <summary>One line of 13.680 (a TUNAI sale would be rounded to 13.700; KREDIT never is).</summary>
     private async Task<(HttpStatusCode Status, JsonElement Body)> SellAsync(Guid? customer, params object[] payments)
     {
         var product = await db.CreateSellableProductAsync(13680m, stock: [(null, 5m)]);
@@ -87,24 +87,24 @@ public class CreditSaleTests(DatabaseFixture db) : IAsyncLifetime
     {
         var customer = await db.CreateCustomerAsync(creditLimit: 1000000m);
 
-        // DP 5.000 in cash → total rounded to 13.700 → credit 8.700
+        // DP 5.000 in cash → total stays 13.680 (no rounding on KREDIT) → credit 8.680
         var (status, body) = await SellAsync(customer,
-            new { Method = "CASH", Amount = 5000m }, new { Method = "CREDIT", Amount = 8700m });
+            new { Method = "CASH", Amount = 5000m }, new { Method = "CREDIT", Amount = 8680m });
 
         Assert.Equal(HttpStatusCode.Created, status);
         var sale = body.GetProperty("sale");
-        Assert.Equal(13700m, sale.Dec("total"));
-        Assert.Equal(20m, sale.Dec("rounding_amount"));
-        Assert.Equal(8700m, sale.Dec("credit_amount"));
+        Assert.Equal(13680m, sale.Dec("total"));
+        Assert.Equal(0m, sale.Dec("rounding_amount"));
+        Assert.Equal(8680m, sale.Dec("credit_amount"));
         Assert.Equal(0m, sale.Dec("change"));
-        Assert.Equal(8700m, await ReceivableAsync(customer));
+        Assert.Equal(8680m, await ReceivableAsync(customer));
 
         var (_, detail) = await _client.GetAsync($"/api/v1/sales/{sale.Id()}", db.CashierToken());
         var payments = detail.GetProperty("payments").EnumerateArray().ToList();
         var cash = Assert.Single(payments, p => p.Str("method") == "CASH");
         var credit = Assert.Single(payments, p => p.Str("method") == "CREDIT");
         Assert.Equal((5000m, 5000m, 0m), (cash.Dec("amount"), cash.Dec("tendered"), cash.Dec("change_given")));
-        Assert.Equal(8700m, credit.Dec("amount"));
+        Assert.Equal(8680m, credit.Dec("amount"));
     }
 
     [DatabaseFact]
