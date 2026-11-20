@@ -67,6 +67,10 @@ public static class ApiEndpoints
                 service.GetAsync(PermissionSet.FromNames(user.FindAll(TokenService.PermissionClaim).Select(c => c.Value)), ct))
             .RequireAuthorization(Permissions.SaleCreate);
 
+        // Receipt data of a stored sale (print after payment, F5 reprint): names, cashier, branch timezone, receipt texts.
+        api.MapGet("/sales/{saleId:guid}", (Guid saleId, SaleDetailService service, CancellationToken ct) => service.GetAsync(saleId, ct))
+            .RequireAuthorization(Permissions.SaleCreate);
+
         api.MapGet("/products/search", (string? q, ProductSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
             .RequireAuthorization(Permissions.SaleCreate);
         api.MapGet("/products/{productId:guid}/units", (Guid productId, ProductSearchService service, CancellationToken ct) =>

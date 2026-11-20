@@ -5,7 +5,9 @@ namespace Pos.Desktop.Configuration;
 
 /// <param name="NodeServiceUrl">Base address of the store's Node Service, always ending with '/'.</param>
 /// <param name="DeviceId">This PC's device id as registered by the store admin.</param>
-public sealed record DesktopSettings(string NodeServiceUrl, Guid? DeviceId);
+/// <param name="PrinterName">Windows printer that receives RAW ESC/POS receipts; empty = show the receipt on screen.</param>
+/// <param name="ReceiptWidth">Characters per receipt line: 48 for 80 mm paper (default), 32 for 58 mm.</param>
+public sealed record DesktopSettings(string NodeServiceUrl, Guid? DeviceId, string? PrinterName = null, int ReceiptWidth = 48);
 
 public sealed record DesktopSettingsLoadResult(DesktopSettings? Settings, string? Error);
 
@@ -22,7 +24,9 @@ public sealed class DesktopSettingsStore(string path)
     private const string Template = """
         {
           "node_service_url": "http://localhost:5080",
-          "device_id": ""
+          "device_id": "",
+          "printer_name": "",
+          "receipt_width": 48
         }
         """;
 
@@ -39,11 +43,16 @@ public sealed class DesktopSettingsStore(string path)
 
         string? url;
         string? device;
+        string? printer;
+        int width;
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
             url = Read(doc.RootElement, "node_service_url");
             device = Read(doc.RootElement, "device_id");
+            printer = Read(doc.RootElement, "printer_name");
+            if (!TryReadWidth(doc.RootElement, out width))
+                return Fail($"receipt_width di {path} harus angka {Pos.Shared.Printing.ReceiptFormatter.MinWidth}..80 (48 untuk kertas 80 mm, 32 untuk 58 mm).");
         }
         catch (JsonException ex)
         {
@@ -56,13 +65,29 @@ public sealed class DesktopSettingsStore(string path)
             return Fail($"device_id di {path} harus berupa ID perangkat (UUID) yang didaftarkan admin toko.");
 
         var baseUrl = uri.AbsoluteUri.EndsWith('/') ? uri.AbsoluteUri : uri.AbsoluteUri + "/";
-        return new DesktopSettingsLoadResult(new DesktopSettings(baseUrl, deviceId), null);
+        return new DesktopSettingsLoadResult(
+            new DesktopSettings(baseUrl, deviceId, string.IsNullOrWhiteSpace(printer) ? null : printer.Trim(), width), null);
     }
 
     private static string? Read(JsonElement root, string name) =>
         root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    /// <summary>Missing = 48; a number (or numeric string) between the minimum width and 80.</summary>
+    private static bool TryReadWidth(JsonElement root, out int width)
+    {
+        width = 48;
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("receipt_width", out var value) || value.ValueKind == JsonValueKind.Null)
+            return true;
+        var ok = value.ValueKind switch
+        {
+            JsonValueKind.Number => value.TryGetInt32(out width),
+            JsonValueKind.String => int.TryParse(value.GetString(), out width),
+            _ => false,
+        };
+        return ok && width is >= Pos.Shared.Printing.ReceiptFormatter.MinWidth and <= 80;
+    }
 
     private static DesktopSettingsLoadResult Fail(string error) => new(null, error);
 }

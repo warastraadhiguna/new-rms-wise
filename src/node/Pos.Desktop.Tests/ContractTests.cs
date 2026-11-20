@@ -53,8 +53,31 @@ public class ContractTests
         Assert.Equal(24m, units[1].Conversion);
         Assert.Equal("PCS", units[1].BaseUnitCode);
         Assert.False(units[1].BaseAllowDecimal);
-        Assert.Equal("45", units[0].StockText);
-        Assert.Equal("1 BOX 21 PCS", units[1].StockText);
+        Assert.Equal("35", units[0].StockText);
+        Assert.Equal("1 BOX 11 PCS", units[1].StockText);
+    }
+
+    [Fact]
+    public async Task Sale_detail_for_the_receipt()
+    {
+        _server.Reply(HttpStatusCode.OK, Json("sale-detail"));
+        var id = Guid.Parse("01a1f8c2-60ec-7a01-871e-7000fe14820e");
+
+        var sale = await Client().GetSaleAsync(id);
+
+        Assert.Equal($"/api/v1/sales/{id}", _server.Requests[0].Request.RequestUri!.AbsolutePath);
+        Assert.Equal("TK01-SL-202611-000006", sale.Number);
+        Assert.Equal(DateTimeKind.Utc, sale.SoldAt.Kind);
+        Assert.Equal("Kasir Satu", sale.Cashier.FullName);
+        Assert.Equal(5m, sale.DiscountPct);
+        Assert.Equal(["Air mineral 600 ml", "Gula pasir 1 kg"], sale.Lines.Select(l => l.Name));
+        Assert.Equal("TUNAI", Assert.Single(sale.Payments).MethodName);
+        Assert.Equal(["TOKO DEV", "Jl. Merdeka No. 1", "Jakarta"], sale.Receipt.HeaderLines);
+
+        var lines = Pos.Shared.Printing.ReceiptFormatter.Format(ReceiptService.ToReceiptData(sale), 48);
+        Assert.Contains("Tanggal: 20/11/2026 18:40", lines);
+        Assert.Contains(lines, l => l.StartsWith("Diskon 5%", StringComparison.Ordinal) && l.EndsWith("1.500", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.StartsWith("Kembali", StringComparison.Ordinal) && l.EndsWith("21.500", StringComparison.Ordinal));
     }
 
     [Fact]

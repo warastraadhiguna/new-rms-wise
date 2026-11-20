@@ -25,7 +25,11 @@ public class SalesViewUiTests
         _api.Catalog.AddRange([Samples.Amplop, Samples.Kantong, Samples.Voucher]);
     }
 
-    private SalesViewModel Vm() => new(_api, _session, _dialogs, _cartStore, _viewStore, (_, _) => Task.CompletedTask);
+    private readonly FakePrinter _printer = new();
+    private readonly MemoryLastSaleStore _lastSale = new();
+
+    private SalesViewModel Vm() => new(_api, _session, _dialogs, _cartStore, _viewStore,
+        Receipts.Service(_api, _dialogs, _printer, lastSale: _lastSale), (_, _) => Task.CompletedTask);
 
     /// <summary>Runs on an STA thread with the form shown; disposes the window afterwards.</summary>
     private void WithForm(Action<SalesView, SalesViewModel> test) => OnSta(() =>
@@ -312,6 +316,38 @@ public class SalesViewUiTests
             Assert.Equal("▶", Find<Button>(view, "DataPanelToggle").Content);
         });
     }
+
+    [Fact]
+    public void F5_in_cari_reprints_the_last_nota_with_cetak_ulang() => WithForm((view, vm) =>
+    {
+        var saleId = Guid.CreateVersion7();
+        _lastSale.SaleId = saleId;
+        Assert.Contains(view.InputBindings.OfType<KeyBinding>(), b => b.Key == Key.F5 && ReferenceEquals(b.Command, vm.ReprintCommand));
+
+        PressKey(Find<TextBox>(view, "SearchBox"), Key.F5);
+
+        Assert.Contains($"get-sale:{saleId}", _api.Calls);
+        Assert.Contains("CETAK ULANG", System.Text.Encoding.ASCII.GetString(Assert.Single(_printer.Jobs).Data));
+        Assert.Equal("Nota TK01-SL-202611-000123 dicetak ulang.", Find<TextBlock>(view, "StatusText").Text);
+        Assert.True(HasFocus(Find<TextBox>(view, "SearchBox")));
+    });
+
+    [Fact]
+    public void F6_with_a_broken_printer_still_completes_the_sale() => WithForm((view, _) =>
+    {
+        _printer.Failure = "printer offline.";
+        _dialogs.OnPayment = p => Samples.Saved(new CreateSaleRequest(p.SaleId, null, [], [], null, null, null, null, null),
+            "TK01-SL-202611-000040", 7500m, 2500m);
+        Scan(view, "13589");
+
+        PressKey(Find<TextBox>(view, "SearchBox"), Key.F6);
+
+        Assert.Empty(Find<DataGrid>(view, "CartGrid").Items);
+        Assert.Equal("0", Find<TextBlock>(view, "TotalText").Text);
+        Assert.Single(_dialogs.Previews);
+        Assert.Single(_dialogs.ShownResults);
+        Assert.Contains("Gagal mencetak", Find<TextBlock>(view, "StatusText").Text);
+    });
 
     [Fact]
     public void Stock_warning_is_shown_under_the_form() => WithForm((view, _) =>

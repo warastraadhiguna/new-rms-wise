@@ -34,6 +34,7 @@ public static class ErrorMessages
         "no_open_shift" => "Belum ada shift terbuka di perangkat ini.",
         "not_shift_owner" => "Shift di perangkat ini milik kasir lain.",
         "reason_required" => "Keterangan wajib diisi.",
+        "unknown_sale" => "Nota tidak ditemukan di Node Service.",
         "qty_multiplier_not_allowed" => "Barang ini harus discan satu per satu (tidak boleh memakai pengali).",
         "no_price" => "Ada barang yang belum punya harga.",
         "insufficient_payment" => "Jumlah bayar kurang dari total.",

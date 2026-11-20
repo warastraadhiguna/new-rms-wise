@@ -138,6 +138,9 @@ public interface INodeApi
     Task<SalesConfig> GetSalesConfigAsync(CancellationToken ct = default);
 
     Task<SaleResult> CreateSaleAsync(CreateSaleRequest request, CancellationToken ct = default);
+
+    /// <summary>A stored sale for printing (after payment and F5 reprint); always fresh from the Node Service.</summary>
+    Task<SaleDetail> GetSaleAsync(Guid saleId, CancellationToken ct = default);
 }
 
 public sealed record SupervisorCredentials(string Username, string Password);
@@ -168,6 +171,9 @@ public interface IDialogService
 
     /// <summary>After a successful sale: nota number and change, shown large.</summary>
     void ShowSaleResult(SaleResult result);
+
+    /// <summary>The receipt on screen (no printer, or printing failed) with the reason.</summary>
+    void ShowReceiptPreview(string message, IReadOnlyList<string> lines);
 }
 
 /// <summary>Switches between the top-level windows.</summary>
@@ -213,3 +219,41 @@ public sealed class SessionState
         Shift = null;
     }
 }
+
+public sealed record SaleUser(Guid Id, string Username, string FullName);
+
+public sealed record SaleCustomer(Guid Id, string Code, string Name);
+
+public sealed record SaleDetailLine(
+    short LineNo, Guid ProductId, Guid ProductUnitId, string Sku, string Name, string UnitCode,
+    decimal Qty, decimal UnitPrice, decimal DiscountAmount, decimal LineTotal);
+
+public sealed record SaleDetailPayment(
+    string Method, string MethodName, bool IsCash, bool IsCredit, decimal Amount, decimal? Tendered, decimal? ChangeGiven,
+    string? Reference);
+
+public sealed record ReceiptText(IReadOnlyList<string> HeaderLines, IReadOnlyList<string> FooterLines);
+
+/// <summary>GET /api/v1/sales/{id}: a stored sale with everything its receipt needs.</summary>
+/// <param name="SoldAt">UTC.</param>
+/// <param name="TimeZone">IANA timezone of the selling branch.</param>
+public sealed record SaleDetail(
+    Guid Id,
+    Guid NodeId,
+    string Number,
+    DateTime SoldAt,
+    string TimeZone,
+    SaleUser Cashier,
+    SaleCustomer? Customer,
+    decimal Subtotal,
+    decimal DiscountAmount,
+    decimal? DiscountPct,
+    decimal RoundingAmount,
+    decimal Total,
+    decimal CreditAmount,
+    decimal Change,
+    DateOnly? DueDate,
+    string? Notes,
+    IReadOnlyList<SaleDetailLine> Lines,
+    IReadOnlyList<SaleDetailPayment> Payments,
+    ReceiptText Receipt);

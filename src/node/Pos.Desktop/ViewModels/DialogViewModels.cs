@@ -155,3 +155,17 @@ public sealed partial class PickerDialogViewModel : DialogViewModel
         DialogResult = true;
     }
 }
+
+/// <summary>Receipt shown on screen when no printer is set or printing failed (monospace, same width as on paper).</summary>
+public sealed partial class ReceiptPreviewViewModel(string message, IReadOnlyList<string> lines) : DialogViewModel
+{
+    public string Message { get; } = message;
+
+    public string ReceiptText { get; } = string.Join(Environment.NewLine, lines);
+
+    /// <summary>Characters per line, so the box is exactly as wide as the paper.</summary>
+    public int Columns { get; } = lines.Count == 0 ? 0 : lines.Max(l => l.Length);
+
+    [RelayCommand]
+    private void Close() => DialogResult = true;
+}

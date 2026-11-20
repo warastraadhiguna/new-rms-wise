@@ -59,6 +59,9 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
     public Task<SaleResult> CreateSaleAsync(CreateSaleRequest request, CancellationToken ct = default) =>
         SendAsync<SaleResult>(HttpMethod.Post, "api/v1/sales", request, authenticated: true, withDevice: true, ct);
 
+    public Task<SaleDetail> GetSaleAsync(Guid saleId, CancellationToken ct = default) =>
+        SendAsync<SaleDetail>(HttpMethod.Get, $"api/v1/sales/{saleId}", null, authenticated: true, withDevice: false, ct);
+
     public Task<CartCancellationResult> CancelCartAsync(
         Guid id, string reason, decimal totalAmount, IReadOnlyList<CartCancellationLine> lines, CancellationToken ct = default) =>
         SendAsync<CartCancellationResult>(HttpMethod.Post, "api/v1/cart-cancellations",

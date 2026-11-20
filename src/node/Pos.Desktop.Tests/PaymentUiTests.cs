@@ -16,6 +16,7 @@ public class PaymentUiTests
 {
     private readonly FakeNodeApi _api = new();
     private readonly FakeDialogs _dialogs = new();
+    private readonly FakePrinter _printer = new();
 
     public PaymentUiTests() => _api.OnCreateSale = r => Samples.Saved(r, "TK01-SL-202611-000030", 13700m, 6300m);
 
@@ -203,7 +204,8 @@ public class PaymentUiTests
         _api.Catalog.Add(Samples.Amplop);
         _dialogs.OnPayment = p => Samples.Saved(new CreateSaleRequest(p.SaleId, null, [], [], null, null, null, null, null),
             "TK01-SL-202611-000032", 7500m, 2500m);
-        var vm = new SalesViewModel(_api, session, _dialogs, new MemoryCartStore(), new MemoryViewSettingsStore(), (_, _) => Task.CompletedTask);
+        var vm = new SalesViewModel(_api, session, _dialogs, new MemoryCartStore(), new MemoryViewSettingsStore(),
+            Receipts.Service(_api, _dialogs, _printer), (_, _) => Task.CompletedTask);
         var view = new SalesView { DataContext = vm };
         var window = Host(view);
         try

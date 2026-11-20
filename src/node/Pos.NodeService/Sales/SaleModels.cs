@@ -45,6 +45,7 @@ public sealed record SaleDto(
     DateTime SoldAt,
     decimal Subtotal,
     decimal DiscountAmount,
+    decimal? DiscountPct,
     Guid? DiscountApprovedBy,
     decimal TaxAmount,
     decimal RoundingAmount,

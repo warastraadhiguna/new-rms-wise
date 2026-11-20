@@ -12,6 +12,7 @@
         <KeyBinding Key="F1" Command="{Binding OpenProductSearchCommand}" />
         <!-- F3 is new (not in RMS 2): hide/show the Data panel. -->
         <KeyBinding Key="F3" Command="{Binding ToggleDataPanelCommand}" />
+        <KeyBinding Key="F5" Command="{Binding ReprintCommand}" />
         <KeyBinding Key="F6" Command="{Binding PayCommand}" />
         <KeyBinding Key="F8" Command="{Binding ChangeQtyCommand}" />
         <KeyBinding Key="Delete" Modifiers="Shift" Command="{Binding DeleteLineCommand}" />

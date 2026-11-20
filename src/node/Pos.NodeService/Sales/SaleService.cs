@@ -150,15 +150,16 @@ public sealed class SaleService(
 
         await c.ExecuteAsync(new CommandDefinition(
             """
-            INSERT INTO sales (id, node_id, number, shift_id, customer_id, sold_at, subtotal, discount_amount, discount_approved_by,
+            INSERT INTO sales (id, node_id, number, shift_id, customer_id, sold_at, subtotal, discount_amount, discount_pct, discount_approved_by,
                                tax_amount, rounding_amount, total, credit_amount, due_date, notes, created_by)
-            VALUES (@saleId, @nodeId, @number, @shiftId, @CustomerId, @soldAt, @Subtotal, @DiscountAmount, @discountApprovedBy,
+            VALUES (@saleId, @nodeId, @number, @shiftId, @CustomerId, @soldAt, @Subtotal, @DiscountAmount, @discountPct, @discountApprovedBy,
                     0, @RoundingAmount, @Total, @CreditAmount, @dueDate, @Notes, @createdBy)
             """,
             new
             {
                 saleId, nodeId = node.Id, number, shiftId, request.CustomerId, soldAt,
-                totals.Subtotal, totals.DiscountAmount, discountApprovedBy, totals.RoundingAmount, totals.Total, totals.CreditAmount,
+                totals.Subtotal, totals.DiscountAmount, discountPct = totals.DiscountAmount > 0 ? cashier.Discount.PercentValue : null,
+                discountApprovedBy, totals.RoundingAmount, totals.Total, totals.CreditAmount,
                 dueDate, request.Notes, createdBy = userId,
             }, tx, cancellationToken: ct));
 
@@ -353,7 +354,7 @@ public sealed class SaleService(
         var header = await c.QuerySingleOrDefaultAsync<HeaderRow>(new CommandDefinition(
             """
             SELECT id AS Id, node_id AS NodeId, number AS Number, shift_id AS ShiftId, customer_id AS CustomerId,
-                   sold_at AS SoldAt, subtotal AS Subtotal, discount_amount AS DiscountAmount,
+                   sold_at AS SoldAt, subtotal AS Subtotal, discount_amount AS DiscountAmount, discount_pct AS DiscountPct,
                    discount_approved_by AS DiscountApprovedBy, tax_amount AS TaxAmount,
                    rounding_amount AS RoundingAmount, total AS Total, credit_amount AS CreditAmount,
                    due_date AS DueDate, notes AS Notes, created_by AS CreatedBy
@@ -387,7 +388,7 @@ public sealed class SaleService(
 
         return new SaleDto(
             header.Id, header.NodeId, header.Number, header.ShiftId, header.CustomerId, header.SoldAt,
-            header.Subtotal, header.DiscountAmount, header.DiscountApprovedBy, header.TaxAmount, header.RoundingAmount,
+            header.Subtotal, header.DiscountAmount, header.DiscountPct, header.DiscountApprovedBy, header.TaxAmount, header.RoundingAmount,
             header.Total, header.CreditAmount,
             payments.Sum(p => p.ChangeGiven ?? 0m),
             header.DueDate is { } due ? DateOnly.FromDateTime(due) : null,
@@ -415,7 +416,7 @@ public sealed class SaleService(
 
     private sealed record HeaderRow(
         Guid Id, Guid NodeId, string Number, Guid ShiftId, Guid? CustomerId, DateTime SoldAt, decimal Subtotal,
-        decimal DiscountAmount, Guid? DiscountApprovedBy, decimal TaxAmount, decimal RoundingAmount, decimal Total,
+        decimal DiscountAmount, decimal? DiscountPct, Guid? DiscountApprovedBy, decimal TaxAmount, decimal RoundingAmount, decimal Total,
         decimal CreditAmount, DateTime? DueDate, string? Notes, Guid CreatedBy);
 
     private sealed record LineRow(

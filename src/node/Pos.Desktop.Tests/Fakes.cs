@@ -130,6 +130,15 @@ public sealed class FakeNodeApi : INodeApi
         SaleRequests.Add(request);
         return Task.FromResult(OnCreateSale!(request));
     }
+
+    /// <summary>GET /sales/{id}; default: a cash sale with that id. Throw from it to simulate a failure.</summary>
+    public Func<Guid, SaleDetail>? OnGetSale { get; set; }
+
+    public Task<SaleDetail> GetSaleAsync(Guid saleId, CancellationToken ct = default)
+    {
+        Calls.Add($"get-sale:{saleId}");
+        return Task.FromResult((OnGetSale ?? (id => Receipts.Detail(id)))(saleId));
+    }
 }
 
 /// <summary>Scripted answers for the sales screen's dialogs; records what was asked.</summary>
@@ -171,6 +180,10 @@ public sealed class FakeDialogs : IDialogService
     }
 
     public void ShowSaleResult(SaleResult result) { Asked.Add("sale-result"); ShownResults.Add(result); }
+
+    public List<(string Message, IReadOnlyList<string> Lines)> Previews { get; } = [];
+
+    public void ShowReceiptPreview(string message, IReadOnlyList<string> lines) { Asked.Add("receipt-preview"); Previews.Add((message, lines)); }
 }
 
 public sealed class MemoryCartStore : ICartStore
@@ -247,4 +260,47 @@ public static class Samples
     /// <summary>What the server would answer for a request (totals are not recomputed here).</summary>
     public static SaleResult Saved(CreateSaleRequest request, string number, decimal total, decimal change, params SaleWarningInfo[] warnings) =>
         new(new SaleSummary(request.Id, number, total, 0m, 0m, total, change, 0m), warnings, Replayed: false);
+}
+
+/// <summary>Records RAW print jobs; <see cref="Failure"/> makes the next jobs fail like an offline printer.</summary>
+public sealed class FakePrinter : IReceiptPrinter
+{
+    public List<(string Printer, byte[] Data, string Document)> Jobs { get; } = [];
+    public string? Failure { get; set; }
+
+    public void PrintRaw(string printerName, byte[] data, string documentName)
+    {
+        if (Failure is not null)
+            throw new PrinterException(Failure);
+        Jobs.Add((printerName, data, documentName));
+    }
+}
+
+public sealed class MemoryLastSaleStore : ILastSaleStore
+{
+    public Guid? SaleId { get; set; }
+    public Guid? Load() => SaleId;
+    public void Save(Guid saleId) => SaleId = saleId;
+}
+
+public static class Receipts
+{
+    public static ReceiptService Service(
+        INodeApi api, IDialogService dialogs, FakePrinter? printer = null, string? printerName = "EPSON TM-T82II Receipt",
+        int width = 48, ILastSaleStore? lastSale = null) =>
+        new(api, printer ?? new FakePrinter(), dialogs, new ReceiptPrinterSettings(printerName, width), lastSale ?? new MemoryLastSaleStore());
+
+    /// <summary>A stored cash sale as GET /api/v1/sales/{id} returns it (sold 11:05 UTC = 18:05 WIB).</summary>
+    public static SaleDetail Detail(Guid id, string number = "TK01-SL-202611-000123", bool cash = true) => new(
+        id, Guid.CreateVersion7(), number, new DateTime(2026, 11, 20, 11, 5, 0, DateTimeKind.Utc), "Asia/Jakarta",
+        new SaleUser(Samples.UserId, "kasir1", "Kasir Satu"), null,
+        19500m, 0m, null, 0m, 19500m, 0m, cash ? 500m : 0m, null, null,
+        [
+            new SaleDetailLine(1, Samples.AmplopId, Guid.CreateVersion7(), "13589", "2023_amplop lebaran karakter", "PCS", 2m, 7500m, 0m, 15000m),
+            new SaleDetailLine(2, Samples.KantongId, Guid.CreateVersion7(), "5113", "2_HD kantong hitam 3kg", "BUNGKUS", 1m, 4500m, 0m, 4500m),
+        ],
+        [cash
+            ? new SaleDetailPayment("CASH", "TUNAI", true, false, 19500m, 20000m, 500m, null)
+            : new SaleDetailPayment("QRIS", "QRIS", false, false, 19500m, null, null, "REF1")],
+        new ReceiptText(["TOKO DEV", "Jl. Merdeka No. 1"], ["Terimakasih Atas Kunjungannya"]));
 }

@@ -19,6 +19,7 @@ public static class DevCredentials
     public const string AdminPassword = "admin123";
     public const string CashierPassword = "kasir123";
     public const string CashierPin = "123456";
+    public const string StoreAdminPassword = "admintoko123";
 }
 
 public sealed record DevProduct(string Sku, Guid ProductId, Guid ProductUnitId, string Barcode, decimal Price, bool TrackExpiry);
@@ -84,30 +85,36 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
               (@storage, @node, 'STORAGE', 'Gudang toko', 'STORAGE', 0)
             """, new { display = Id(), storage = Id(), node });
 
-        var cashierRole = Id(); var adminRole = Id(); var admin = Id(); var cashier = Id();
+        var cashierRole = Id(); var adminRole = Id(); var ownerRole = Id(); var hqAdminRole = Id();
+        var admin = Id(); var cashier = Id(); var storeAdmin = Id();
         await Exec(
             """
             INSERT INTO roles (id, code, name, permissions) VALUES
               (@cashierRole, 'CASHIER', 'Kasir', @CashierPermissions),
-              (@adminRole, 'STORE_ADMIN', 'Admin toko', @AdminPermissions)
-            """, new { cashierRole, adminRole, CashierPermissions, AdminPermissions });
+              (@adminRole, 'STORE_ADMIN', 'Admin toko', @StoreAdminPermissions),
+              (@ownerRole, 'OWNER', 'Pemilik', @FullPermissions),
+              (@hqAdminRole, 'HQ_ADMIN', 'Admin HQ', @FullPermissions)
+            """, new { cashierRole, adminRole, ownerRole, hqAdminRole, CashierPermissions, StoreAdminPermissions, FullPermissions });
         // DEV ONLY credentials, see DevCredentials.
         await Exec(
             """
             INSERT INTO users (id, username, password_hash, pin_hash, full_name) VALUES
               (@admin, 'admin', @adminHash, NULL, 'Admin Dev'),
-              (@cashier, 'kasir1', @cashierHash, @cashierPin, 'Kasir Satu')
+              (@cashier, 'kasir1', @cashierHash, @cashierPin, 'Kasir Satu'),
+              (@storeAdmin, 'admintoko', @storeAdminHash, NULL, 'Admin Toko Dev')
             """, new
             {
-                admin, cashier,
+                admin, cashier, storeAdmin,
+                storeAdminHash = PasswordHasher.Hash(DevCredentials.StoreAdminPassword),
                 adminHash = PasswordHasher.Hash(DevCredentials.AdminPassword),
                 cashierHash = PasswordHasher.Hash(DevCredentials.CashierPassword),
                 cashierPin = PasswordHasher.Hash(DevCredentials.CashierPin),
             });
         await Exec(
             """
-            INSERT INTO user_roles (id, user_id, role_id, node_id) VALUES (@a, @admin, @adminRole, @node), (@b, @cashier, @cashierRole, @node)
-            """, new { a = Id(), b = Id(), admin, adminRole, cashier, cashierRole, node });
+            INSERT INTO user_roles (id, user_id, role_id, node_id) VALUES
+              (@a, @admin, @ownerRole, NULL), (@b, @cashier, @cashierRole, @node), (@c, @storeAdmin, @adminRole, @node)
+            """, new { a = Id(), b = Id(), c = Id(), admin, ownerRole, cashier, cashierRole, storeAdmin, adminRole, node });
         await Exec(
             """
             INSERT INTO devices (id, node_id, name, type, fingerprint, public_key, status, approved_by, approved_at) VALUES
@@ -189,13 +196,23 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
               (@s1, NULL, 'rounding.cash_step', '"100"'),
               (@s2, NULL, 'rounding.cash_mode', '"nearest"'),
               (@s3, NULL, 'currency.decimals', '0'),
-              (@s4, NULL, 'returns.window_days', '7')
-            """, new { s1 = Id(), s2 = Id(), s3 = Id(), s4 = Id() });
+              (@s4, NULL, 'returns.window_days', '7'),
+              (@s5, NULL, 'receipt.header_lines', @ReceiptHeader),
+              (@s6, NULL, 'receipt.footer_lines', @ReceiptFooter)
+            """, new { s1 = Id(), s2 = Id(), s3 = Id(), s4 = Id(), s5 = Id(), s6 = Id(), ReceiptHeader, ReceiptFooter });
         await Exec("INSERT INTO reasons (id, type, name) VALUES (@id, 'ADJUSTMENT', 'Saldo awal (OPENING)')", new { id = Id() });
     }
 
     private const string CashierPermissions = """["shift.open","shift.close","sale.create"]""";
-    private const string AdminPermissions = """["*"]""";
+    /// <summary>OWNER and HQ_ADMIN only: "*" includes stock.rebuild.</summary>
+    private const string FullPermissions = """["*"]""";
+
+    /// <summary>Store admin / supervisor: everything a store needs, but not stock.rebuild (owner's decision).</summary>
+    private const string StoreAdminPermissions =
+        """["shift.open","shift.close","shift.share","sale.create","sale.discount.override","sale.line.delete","discount.max:100"]""";
+
+    private const string ReceiptHeader = """["TOKO DEV","Jl. Merdeka No. 1","Jakarta"]""";
+    private const string ReceiptFooter = """["Terimakasih Atas Kunjungannya"]""";
 
     /// <summary>
     /// Databases seeded before authentication existed: give the dev users real bcrypt hashes and the
@@ -212,7 +229,7 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
                 new { hash = PasswordHasher.Hash(DevCredentials.CashierPassword), pin = PasswordHasher.Hash(DevCredentials.CashierPin) });
         var roles =
             await Exec("UPDATE roles SET permissions = @CashierPermissions WHERE code = 'CASHIER' AND permissions IS NULL", new { CashierPermissions })
-            + await Exec("UPDATE roles SET permissions = @AdminPermissions WHERE code = 'STORE_ADMIN' AND permissions IS NULL", new { AdminPermissions });
+            + await Exec("UPDATE roles SET permissions = @StoreAdminPermissions WHERE code = 'STORE_ADMIN' AND permissions IS NULL", new { StoreAdminPermissions });
 
         if (users + roles > 0)
             _logger.LogInformation("Dev seed: set credentials for {Users} user(s) and permissions for {Roles} role(s).", users, roles);
@@ -231,6 +248,66 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
         }
         if (methods > 0)
             _logger.LogInformation("Dev seed: updated {Count} payment method(s) to the RMS 2 list.", methods);
+
+        await UpgradeRolesAndReceiptAsync(c, tx, ct);
+    }
+
+    /// <summary>
+    /// Owner's decision: stock.rebuild only for OWNER and HQ_ADMIN. STORE_ADMIN loses "*" (explicit list), the dev
+    /// user admin moves to OWNER, admintoko is the store admin. Also adds the receipt texts. Safe to repeat.
+    /// </summary>
+    private async Task UpgradeRolesAndReceiptAsync(MySqlConnection c, MySqlTransaction tx, CancellationToken ct)
+    {
+        Task<int> Exec(string sql, object args) => c.ExecuteAsync(new CommandDefinition(sql, args, tx, cancellationToken: ct));
+
+        var changes = 0;
+        foreach (var (code, name) in new[] { ("OWNER", "Pemilik"), ("HQ_ADMIN", "Admin HQ") })
+        {
+            changes += await Exec(
+                """
+                INSERT INTO roles (id, code, name, permissions)
+                SELECT @id, @code, @name, @FullPermissions FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM roles WHERE code = @code)
+                """, new { id = Guid.CreateVersion7(), code, name, FullPermissions });
+        }
+        changes += await Exec(
+            "UPDATE roles SET permissions = @StoreAdminPermissions WHERE code = 'STORE_ADMIN' AND JSON_CONTAINS(permissions, '\"*\"')",
+            new { StoreAdminPermissions });
+        changes += await Exec(
+            """
+            UPDATE user_roles ur
+            JOIN users u ON u.id = ur.user_id AND u.username = 'admin'
+            JOIN roles r ON r.id = ur.role_id AND r.code = 'STORE_ADMIN'
+            SET ur.role_id = (SELECT id FROM roles WHERE code = 'OWNER'), ur.node_id = NULL
+            """, new { });
+
+        var storeAdmin = Guid.CreateVersion7();
+        if (await Exec(
+                """
+                INSERT INTO users (id, username, password_hash, pin_hash, full_name)
+                SELECT @storeAdmin, 'admintoko', @hash, NULL, 'Admin Toko Dev' FROM DUAL
+                WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admintoko')
+                """, new { storeAdmin, hash = PasswordHasher.Hash(DevCredentials.StoreAdminPassword) }) > 0)
+        {
+            changes += await Exec(
+                """
+                INSERT INTO user_roles (id, user_id, role_id, node_id)
+                SELECT @id, @storeAdmin, r.id, n.id FROM roles r JOIN nodes n ON n.code = (SELECT MIN(code) FROM nodes)
+                WHERE r.code = 'STORE_ADMIN'
+                """, new { id = Guid.CreateVersion7(), storeAdmin });
+        }
+
+        foreach (var (key, value) in new[] { ("receipt.header_lines", ReceiptHeader), ("receipt.footer_lines", ReceiptFooter) })
+        {
+            changes += await Exec(
+                """
+                INSERT INTO settings (id, branch_id, setting_key, setting_value)
+                SELECT @id, NULL, @key, @value FROM DUAL
+                WHERE NOT EXISTS (SELECT 1 FROM settings WHERE branch_id IS NULL AND setting_key = @key)
+                """, new { id = Guid.CreateVersion7(), key, value });
+        }
+
+        if (changes > 0)
+            _logger.LogInformation("Dev seed: roles OWNER/HQ_ADMIN/STORE_ADMIN and receipt settings brought up to date ({Count} change(s)).", changes);
     }
 
     private static async Task<DevSeedResult> LoadAsync(MySqlConnection c, MySqlTransaction tx, string nodeCode, bool created, CancellationToken ct)

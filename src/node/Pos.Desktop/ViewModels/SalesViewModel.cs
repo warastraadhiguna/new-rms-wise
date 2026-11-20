@@ -33,6 +33,7 @@ public sealed partial class SalesViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private readonly ICartStore _cartStore;
     private readonly IViewSettingsStore _viewStore;
+    private readonly ReceiptService _receipts;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly Cart _cart = new();
     private CancellationTokenSource? _searchCts;
@@ -44,13 +45,14 @@ public sealed partial class SalesViewModel : ObservableObject
 
     public SalesViewModel(
         INodeApi api, SessionState session, IDialogService dialogs, ICartStore cartStore, IViewSettingsStore viewStore,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        ReceiptService receipts, Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
         _api = api;
         _session = session;
         _dialogs = dialogs;
         _cartStore = cartStore;
         _viewStore = viewStore;
+        _receipts = receipts;
         _delay = delay ?? Task.Delay;
 
         LoadViewSettings();
@@ -452,11 +454,45 @@ public sealed partial class SalesViewModel : ObservableObject
             return;
         }
 
+        // The sale is saved: from here on nothing may undo it, whatever happens with the printer.
         ClearTransaction();
+        _receipts.RememberLastSale(result.Sale.Id);
+        var printed = await PrintReceiptAsync(result.Sale.Id, reprint: false);
         _dialogs.ShowSaleResult(result);
-        StatusMessage = $"Nota {result.Sale.Number} tersimpan. Kembali Rp {result.Sale.Change.ToString("#,0", Indonesian)}.";
+        StatusMessage = $"Nota {result.Sale.Number} tersimpan. Kembali Rp {result.Sale.Change.ToString("#,0", Indonesian)}."
+                        + (printed.Message is { } problem ? " " + problem : "");
         WarningMessage = result.Warnings.Count == 0 ? null : string.Join(" ", result.Warnings.Select(SaleWarningText));
         RequestFocus("search");
+    }
+
+    /// <summary>F5 "Cetak Ulang": the last nota of this device, loaded again from the Node Service.</summary>
+    [RelayCommand]
+    private async Task ReprintAsync()
+    {
+        if (_receipts.LastSaleId is not { } saleId)
+        {
+            StatusMessage = "Belum ada nota di perangkat ini untuk dicetak ulang.";
+            RequestFocus("search");
+            return;
+        }
+
+        var printed = await PrintReceiptAsync(saleId, reprint: true);
+        StatusMessage = printed.Printed ? $"Nota {printed.Number} dicetak ulang." : printed.Message;
+        RequestFocus("search");
+    }
+
+    /// <summary>Printing never throws into the sale flow; an unexpected error becomes a message.</summary>
+    private async Task<ReceiptPrintResult> PrintReceiptAsync(Guid saleId, bool reprint)
+    {
+        try
+        {
+            return await _receipts.PrintAsync(saleId, reprint);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return new ReceiptPrintResult(false, null,
+                $"Struk gagal dicetak: {ex.Message} Penjualan tetap tersimpan; tekan F5 untuk cetak ulang.");
+        }
     }
 
     private static string SaleWarningText(SaleWarningInfo warning) => warning.Code switch

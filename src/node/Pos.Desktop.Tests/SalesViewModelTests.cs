@@ -18,7 +18,11 @@ public class SalesViewModelTests
         _api.Catalog.AddRange([Samples.Amplop, Samples.Kantong, Samples.Voucher]);
     }
 
-    private SalesViewModel Vm() => new(_api, _session, _dialogs, _cartStore, _viewStore, (delay, token) =>
+    private readonly FakePrinter _printer = new();
+    private readonly MemoryLastSaleStore _lastSale = new();
+
+    private SalesViewModel Vm(string? printerName = "EPSON TM-T82II Receipt") => new(_api, _session, _dialogs, _cartStore, _viewStore,
+        Receipts.Service(_api, _dialogs, _printer, printerName, lastSale: _lastSale), (delay, token) =>
     {
         _delays.Add((delay, token));
         return Task.CompletedTask;
@@ -577,6 +581,105 @@ public class SalesViewModelTests
         Assert.Empty(vm.Lines);
         Assert.Null(_cartStore.Saved);
         Assert.Equal("Nota TK01-SL-202611-000021 tersimpan. Kembali Rp 2.500.", vm.StatusMessage);
+        Assert.Equal("search", vm.FocusRequest?.Target);
+    }
+
+    private SaleResult PaidAmplop(ViewModels.PaymentViewModel p) =>
+        Samples.Saved(new CreateSaleRequest(p.SaleId, null, [], [], null, null, null, null, null), "TK01-SL-202611-000021", 7500m, 2500m);
+
+    [Fact]
+    public async Task Paying_prints_the_receipt_automatically_from_the_stored_sale()
+    {
+        _dialogs.OnPayment = PaidAmplop;
+        var vm = Vm();
+        await Scan(vm, "13589");
+
+        await vm.PayCommand.ExecuteAsync(null);
+
+        var saleId = _dialogs.Payments[0].SaleId;
+        Assert.Contains($"get-sale:{saleId}", _api.Calls);
+        var job = Assert.Single(_printer.Jobs);
+        Assert.Equal(Pos.Shared.Printing.EscPos.FeedAndCut, job.Data[^4..]);
+        Assert.Equal(saleId, _lastSale.SaleId);
+        Assert.True(_api.Calls.IndexOf($"get-sale:{saleId}") > _api.Calls.IndexOf("sales-config"));
+        Assert.Equal(["payment", "sale-result"], _dialogs.Asked.Where(a => a is "payment" or "sale-result" or "receipt-preview"));
+    }
+
+    [Fact]
+    public async Task Printer_failure_does_not_undo_the_sale()
+    {
+        _printer.Failure = "printer offline.";
+        _dialogs.OnPayment = PaidAmplop;
+        var vm = Vm();
+        await Scan(vm, "13589");
+
+        await vm.PayCommand.ExecuteAsync(null);
+
+        Assert.Single(_dialogs.ShownResults);                 // nota and Kembali still shown
+        Assert.Empty(vm.Lines);                               // cart cleared: the sale is saved
+        Assert.Null(_cartStore.Saved);
+        Assert.Single(_dialogs.Previews);                     // receipt on screen instead
+        Assert.Equal(_dialogs.Payments[0].SaleId, _lastSale.SaleId);   // F5 can still print it later
+        Assert.StartsWith("Nota TK01-SL-202611-000021 tersimpan.", vm.StatusMessage);
+        Assert.Contains("Gagal mencetak", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Unexpected_print_error_does_not_undo_the_sale_either()
+    {
+        _api.OnGetSale = _ => throw new HttpRequestException("socket closed");
+        _dialogs.OnPayment = PaidAmplop;
+        var vm = Vm();
+        await Scan(vm, "13589");
+
+        await vm.PayCommand.ExecuteAsync(null);
+
+        Assert.Single(_dialogs.ShownResults);
+        Assert.Empty(vm.Lines);
+        Assert.Contains("Struk gagal dicetak: socket closed", vm.StatusMessage);
+        Assert.Contains("F5", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Without_a_printer_paying_shows_the_receipt_preview()
+    {
+        _dialogs.OnPayment = PaidAmplop;
+        var vm = Vm(printerName: null);
+        await Scan(vm, "13589");
+
+        await vm.PayCommand.ExecuteAsync(null);
+
+        Assert.Empty(_printer.Jobs);
+        Assert.Contains("printer_name", Assert.Single(_dialogs.Previews).Message);
+        Assert.Single(_dialogs.ShownResults);
+        Assert.Empty(vm.Lines);
+    }
+
+    [Fact]
+    public async Task F5_without_a_previous_nota_says_so()
+    {
+        var vm = Vm();
+
+        await vm.ReprintCommand.ExecuteAsync(null);
+
+        Assert.Equal("Belum ada nota di perangkat ini untuk dicetak ulang.", vm.StatusMessage);
+        Assert.Empty(_printer.Jobs);
+        Assert.DoesNotContain(_api.Calls, c => c.StartsWith("get-sale", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task F5_reloads_the_last_nota_from_the_node_service_and_prints_cetak_ulang()
+    {
+        var saleId = Guid.CreateVersion7();
+        _lastSale.SaleId = saleId;
+        var vm = Vm();
+
+        await vm.ReprintCommand.ExecuteAsync(null);
+        await vm.ReprintCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, _api.Calls.Count(c => c == $"get-sale:{saleId}"));     // fetched again each time, never cached
+        Assert.All(_printer.Jobs, j => Assert.Contains("CETAK ULANG", System.Text.Encoding.ASCII.GetString(j.Data)));
+        Assert.Equal("Nota TK01-SL-202611-000123 dicetak ulang.", vm.StatusMessage);
         Assert.Equal("search", vm.FocusRequest?.Target);
     }
 

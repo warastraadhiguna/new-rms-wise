@@ -90,6 +90,9 @@ public sealed class WpfDialogService(INodeApi api) : IDialogService
 
     public void ShowSaleResult(SaleResult result) => Show(new SaleResultDialog(), new SaleResultViewModel(result));
 
+    public void ShowReceiptPreview(string message, IReadOnlyList<string> lines) =>
+        Show(new ReceiptPreviewDialog(), new ReceiptPreviewViewModel(message, lines));
+
     private static bool Show(Window window, object viewModel)
     {
         window.DataContext = viewModel;

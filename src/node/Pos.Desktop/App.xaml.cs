@@ -46,9 +46,13 @@ public partial class App : Application
         services.AddSingleton<IDialogService, WpfDialogService>();
         services.AddSingleton<ICartStore>(_ => new FileCartStore(FileCartStore.PathFor(settings.DeviceId)));
         services.AddSingleton<IViewSettingsStore>(_ => new FileViewSettingsStore(FileViewSettingsStore.DefaultPath));
+        services.AddSingleton<IReceiptPrinter, WindowsRawPrinter>();
+        services.AddSingleton<ILastSaleStore>(_ => new FileLastSaleStore(FileLastSaleStore.PathFor(settings.DeviceId)));
+        services.AddSingleton(new ReceiptPrinterSettings(settings.PrinterName, settings.ReceiptWidth));
+        services.AddSingleton<ReceiptService>();
         services.AddTransient(sp => new SalesViewModel(
             sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<SessionState>(), sp.GetRequiredService<IDialogService>(),
-            sp.GetRequiredService<ICartStore>(), sp.GetRequiredService<IViewSettingsStore>()));
+            sp.GetRequiredService<ICartStore>(), sp.GetRequiredService<IViewSettingsStore>(), sp.GetRequiredService<ReceiptService>()));
         services.AddTransient<Func<SalesViewModel>>(sp => () => sp.GetRequiredService<SalesViewModel>());
         services.AddTransient(sp => new MainViewModel(sp.GetRequiredService<SessionState>(), sp.GetRequiredService<Func<SalesViewModel>>()));
         services.AddTransient<LoginWindow>();

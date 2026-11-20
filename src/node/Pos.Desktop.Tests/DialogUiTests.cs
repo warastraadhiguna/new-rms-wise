@@ -34,6 +34,46 @@ public class DialogUiTests
     });
 
     [Fact]
+    public void Receipt_preview_shows_the_message_and_the_receipt_in_a_monospace_box_and_enter_closes() => OnSta(() =>
+    {
+        var lines = Pos.Shared.Printing.ReceiptFormatter.Format(
+            Pos.Desktop.Services.ReceiptService.ToReceiptData(Receipts.Detail(Guid.CreateVersion7())), 48);
+        var vm = new ReceiptPreviewViewModel("Printer struk belum diatur.", lines);
+        var window = ShowOffScreen(new ReceiptPreviewDialog { DataContext = vm });
+
+        Assert.Equal("Printer struk belum diatur.", Find<TextBlock>(window, "MessageText").Text);
+        var box = Find<TextBox>(window, "ReceiptBox");
+        Assert.Equal(string.Join(Environment.NewLine, lines), box.Text);
+        Assert.True(box.IsReadOnly);
+        Assert.Equal(TextWrapping.NoWrap, box.TextWrapping);
+        Assert.StartsWith("Consolas", box.FontFamily.Source);
+        Assert.Equal(48, vm.Columns);
+        // Every receipt character is equally wide: the dashed rule and the widest text line measure the same.
+        Assert.Equal(Measure(box, new string('-', 48)), Measure(box, new string('W', 48)), precision: 1);
+
+        PressKey(Find<Button>(window, "CloseButton"), Key.Enter);
+
+        Assert.True(vm.DialogResult);
+        Assert.False(window.IsVisible);
+    });
+
+    private static double Measure(TextBox box, string text) => new System.Windows.Media.FormattedText(
+        text, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+        new System.Windows.Media.Typeface(box.FontFamily, box.FontStyle, box.FontWeight, box.FontStretch), box.FontSize,
+        System.Windows.Media.Brushes.Black, 1.0).Width;
+
+    [Fact]
+    public void Receipt_preview_escape_closes_too() => OnSta(() =>
+    {
+        var vm = new ReceiptPreviewViewModel("Gagal mencetak.", ["A", "B"]);
+        var window = ShowOffScreen(new ReceiptPreviewDialog { DataContext = vm });
+
+        PressKey(Find<TextBox>(window, "ReceiptBox"), Key.Escape);
+
+        Assert.False(window.IsVisible);
+    });
+
+    [Fact]
     public void Input_dialog_escape_cancels() => OnSta(() =>
     {
         var vm = new InputDialogViewModel("Atur Jumlah", "Jumlah:", "1", _ => null);
@@ -109,7 +149,7 @@ public class DialogUiTests
         session.SetLogin(Samples.LoginWith("sale.create"));
         session.Shift = Samples.Shift();
         var vm = new MainViewModel(session, () => new SalesViewModel(new FakeNodeApi(), session, new FakeDialogs(),
-            new MemoryCartStore(), new MemoryViewSettingsStore(), (_, _) => Task.CompletedTask));
+            new MemoryCartStore(), new MemoryViewSettingsStore(), Receipts.Service(new FakeNodeApi(), new FakeDialogs()), (_, _) => Task.CompletedTask));
         var window = ShowOffScreen(new MainWindow { DataContext = vm });
         try
         {
