@@ -75,13 +75,55 @@ public class PriceResolverTests
     }
 
     [Fact]
-    public void Branch_set_is_used_when_it_has_a_price_for_the_qty()
+    public void Default_wholesale_tier_beats_branch_base_tier()
     {
-        // branch only has the base tier; the default wholesale tier is not mixed in
-        Assert.Equal(4100m, Resolve(12m,
+        // branch only has the base tier (min 1); the default tier for 12+ has the larger min_qty
+        Assert.Equal(3500m, Resolve(12m,
             P("4000", "2026-01-01T00:00:00Z"),
             P("3500", "2026-01-01T00:00:00Z", minQty: "12"),
             P("4100", "2026-01-01T00:00:00Z", Branch)));
+    }
+
+    [Fact]
+    public void Branch_base_tier_applies_below_the_default_wholesale_tier()
+    {
+        Assert.Equal(4100m, Resolve(11m,
+            P("4000", "2026-01-01T00:00:00Z"),
+            P("3500", "2026-01-01T00:00:00Z", minQty: "12"),
+            P("4100", "2026-01-01T00:00:00Z", Branch)));
+    }
+
+    [Fact]
+    public void Same_min_qty_branch_wins_even_when_more_expensive()
+    {
+        Assert.Equal(3600m, Resolve(12m,
+            P("3500", "2026-01-01T00:00:00Z", minQty: "12"),
+            P("3600", "2026-01-01T00:00:00Z", Branch, minQty: "12")));
+    }
+
+    [Fact]
+    public void Branch_wholesale_tier_beats_smaller_default_tier()
+    {
+        Assert.Equal(3300m, Resolve(24m,
+            P("4000", "2026-01-01T00:00:00Z"),
+            P("3500", "2026-01-01T00:00:00Z", minQty: "12"),
+            P("3300", "2026-01-01T00:00:00Z", Branch, minQty: "24")));
+    }
+
+    [Fact]
+    public void Larger_default_tier_beats_smaller_branch_tier()
+    {
+        Assert.Equal(3200m, Resolve(30m,
+            P("3200", "2026-01-01T00:00:00Z", minQty: "24"),
+            P("3400", "2026-01-01T00:00:00Z", Branch, minQty: "12")));
+    }
+
+    [Fact]
+    public void Future_branch_tier_is_ignored()
+    {
+        Assert.Equal(3500m, Resolve(12m,
+            P("3500", "2026-01-01T00:00:00Z", minQty: "12"),
+            P("3300", "2027-01-01T00:00:00Z", Branch, minQty: "12")));
     }
 
     [Fact]
