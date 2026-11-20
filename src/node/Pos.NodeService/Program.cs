@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration.Json;
 using MySqlConnector;
+using Pos.NodeService.Api;
 using Pos.NodeService.Data;
+using Pos.NodeService.Shifts;
 using Pos.NodeService.Dev;
 using Pos.NodeService.Health;
 using Pos.NodeService.Nodes;
@@ -41,6 +43,7 @@ builder.Services.AddSingleton(sp => new NodeIdentity(
     sp.GetRequiredService<IConfiguration>()["Node:Code"] ?? ""));
 builder.Services.AddSingleton<TransactionRunner>();
 builder.Services.AddSingleton(sp => new StockPostingService(sp.GetRequiredService<TransactionRunner>()));
+builder.Services.AddSingleton<ShiftService>();
 builder.Services.AddSingleton<DevSeeder>(sp => new DevSeeder(
     sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("Pos.DevSeed")));
@@ -104,6 +107,7 @@ if (args.Contains("seed-dev"))
 }
 
 app.MapHealthEndpoints(server);
+app.MapApiV1();
 
 app.Run();
 return 0;

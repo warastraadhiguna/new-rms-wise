@@ -55,6 +55,20 @@ public sealed class DatabaseFixture : IAsyncLifetime
         return id;
     }
 
+    /// <summary>A fresh ACTIVE device of node TK01, so tests never share open shifts.</summary>
+    public async Task<Guid> CreateDeviceAsync(string status = "ACTIVE", Guid? nodeId = null)
+    {
+        var id = Guid.CreateVersion7();
+        await using var connection = await Factory.OpenAsync();
+        await connection.ExecuteAsync(
+            """
+            INSERT INTO devices (id, node_id, name, type, fingerprint, public_key, status)
+            VALUES (@id, @node, 'Test device', 'CASHIER_PC', @fingerprint, 'TEST', @status)
+            """,
+            new { id, node = nodeId ?? NodeId, fingerprint = "T-" + id.ToString("N"), status });
+        return id;
+    }
+
     private async Task DropAllTablesAsync()
     {
         await using var connection = await Factory.OpenAsync();

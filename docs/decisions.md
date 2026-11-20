@@ -30,6 +30,8 @@
 | 2026-11-20 | Node identity comes from setting `Node:Code`; the node row arrives with master data, so endpoints that need it answer 503 until it exists. |
 | 2026-11-20 | Document numbers `{NODE}-{TYPE}-{YYYYMM}-{000001}` from `document_sequences`, month in the branch timezone. The sequence row is locked until the document commits, so numbers are unique and gapless (a rollback returns the number). Type codes: `SL` sale, `SH` cashier shift, `ADJ` stock adjustment. |
 | 2026-11-20 | API and sync JSON: snake_case, decimals as strings with 4 decimals, times ISO-8601 UTC with milliseconds (`PosJson`). Each document writes its `sync_outbox` row (full payload) in the same transaction. |
+| 2026-11-20 | Cashier shifts: one OPEN shift per device (device row locked while opening). Close computes `expected_cash = opening_cash + cash tendered - change given` over cash payment methods; sales hold a shared lock on their shift so a close waits for them. Shift is a mutable document: open = row_version 1, close = 2, each with an outbox row. Cashier/device come from the request until authentication exists. |
+| 2026-11-20 | API errors are RFC 7807 problem details with a stable snake_case `code` (422 validation, 409 state conflict, 404 unknown, 503 node not configured). |
 | 2026-11-20 | Dev data comes from `dotnet run --project src/node/Pos.NodeService -- seed-dev` (refuses databases not named `*_dev`), never from a migration. Opening stock is posted through a real ADJUSTMENT document. |
 
 ## Setting keys
