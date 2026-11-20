@@ -17,6 +17,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Pos.Tests.TestDecimal" Static="true" />
+    <Using Include="Pos.Tests.TestDates" Static="true" />
   </ItemGroup>
 
   <ItemGroup>

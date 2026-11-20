@@ -19,6 +19,13 @@
 | 2026-11-20 | All rupiah rounding goes through `Pos.Shared.Money.Rupiah`. Storage precision is 4 dp; unit prices keep 4 dp. Sale line gross is rounded to the currency precision before discounts; discount and line total are at currency precision, with `line_total = gross - discount`. Midpoints round away from zero. |
 | 2026-11-20 | Cash rounding modes are signed: `up` = toward +infinity, `down` = toward -infinity (also for refunds), so a mode always favours the same party. `nearest` rounds an exact half step away from zero. |
 | 2026-11-20 | Sale line discount: percent first on the gross, then a nominal amount per line; capped so the line total is never negative. |
+| 2026-11-20 | Stock is split into expiry buckets per location + product. The null bucket means no/unknown expiry (`stock_balances.expiry_key = 9999-12-31`); `9999-12-31` is never accepted as a real expiry. Only the null bucket may go negative. Allocation logic is `Pos.Shared.Stock.StockAllocator`. |
+| 2026-11-20 | Outbound (sale, delivery, transfer out) is FEFO: dated buckets with positive stock, earliest expiry first; same-date buckets are merged, so the result never depends on input order. Expired buckets (`expiry < today` in the branch timezone) are skipped unless `allowExpired`; expiring today is still sellable. The shortage goes to the null bucket. |
+| 2026-11-20 | Inbound (receipt, return, transfer in) with expiry E: a negative null bucket is covered up to 0 first (goods sold while short are assumed to come from this delivery), the rest goes to bucket E. Inbound without expiry goes to the null bucket. Negative dated buckets are never covered. |
+| 2026-11-20 | `track_expiry = false`: outbound first drains any remaining dated buckets FEFO (expired included), then the null bucket; inbound always goes to the null bucket. Lets a product switch the flag off without stranding dated stock. |
+| 2026-11-20 | One document line produces one `stock_ledger` entry per expiry bucket. Ledger ids are UUID v7, `base_qty` is signed (+ in, - out), `occurred_at` must be UTC, `doc_type` must be one of `StockDocTypes`. |
+| 2026-11-20 | Transfers keep the expiry of each FEFO allocation. Within a node: one `LOCATION_TRANSFER` with out entries at the source and in entries at the destination (`StockTransfer.Transfer`). Across nodes: the sender's delivery has one line per expiry; the receiver's goods receipt reads those expiries (`StockTransfer.AllocateReceipt`), covering a negative null bucket earliest expiry first. Total out == total in. |
+| 2026-11-20 | "Today" for expiry checks is the branch-local date of the Node Service UTC clock (`BranchClock.Today`, IANA timezone from `branches.timezone`). |
 
 ## Setting keys
 
