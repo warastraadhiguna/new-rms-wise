@@ -16,5 +16,16 @@
 | 2026-11-20 | Returns and credit payments at any store (option B, read-only replicas). Return window is a setting. |
 | 2026-11-20 | Loyalty points and customer credit usable offline; HQ flags overuse after sync. |
 | 2026-11-20 | Prices may differ per branch; setting to force uniform prices. |
+| 2026-11-20 | All rupiah rounding goes through `Pos.Shared.Money.Rupiah`. Storage precision is 4 dp; unit prices keep 4 dp. Sale line gross is rounded to the currency precision before discounts; discount and line total are at currency precision, with `line_total = gross - discount`. Midpoints round away from zero. |
+| 2026-11-20 | Cash rounding modes are signed: `up` = toward +infinity, `down` = toward -infinity (also for refunds), so a mode always favours the same party. `nearest` rounds an exact half step away from zero. |
+| 2026-11-20 | Sale line discount: percent first on the gross, then a nominal amount per line; capped so the line total is never negative. |
+
+## Setting keys
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rounding.cash_step` | decimal string | `"0"` | Cash totals are rounded to a multiple of this (e.g. `"100"`, `"500"`). `0` = no rounding. |
+| `rounding.cash_mode` | string | `"nearest"` | `up`, `down` or `nearest` (see `CashRoundingModes`). |
+| `currency.decimals` | integer 0..4 | `0` | Currency precision for line discounts and line totals. |
 
 Full design document (Indonesian): https://claude.ai/artifact/4axAUbpgSNk1q77tM7PLsC
