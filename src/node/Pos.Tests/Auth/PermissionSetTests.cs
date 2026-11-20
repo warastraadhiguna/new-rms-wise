@@ -59,6 +59,38 @@ public class PermissionSetTests
     }
 
     [Fact]
+    public void Intersect_keeps_only_permissions_present_in_both()
+    {
+        var token = PermissionSet.FromNames(["sale.create", "shift.open", "shift.close"]);
+        var current = PermissionSet.FromNames(["shift.open", "shift.close", "sale.void"]);
+
+        Assert.Equal(["shift.close", "shift.open"], token.Intersect(current).Names);
+    }
+
+    [Fact]
+    public void Intersect_with_wildcard_on_one_side_keeps_the_other_side()
+    {
+        var all = PermissionSet.FromNames(["*"]);
+        var some = PermissionSet.FromNames(["sale.create"]);
+
+        Assert.Equal(["sale.create"], all.Intersect(some).Names);
+        Assert.Equal(["sale.create"], some.Intersect(all).Names);
+        Assert.Equal(["*"], all.Intersect(all).Names);
+    }
+
+    [Fact]
+    public void Intersect_with_nothing_is_nothing()
+    {
+        Assert.Empty(PermissionSet.FromNames(["*"]).Intersect(PermissionSet.FromNames([])).Names);
+    }
+
+    [Fact]
+    public void Shift_share_permission_name()
+    {
+        Assert.Equal("shift.share", Permissions.ShiftShare);
+    }
+
+    [Fact]
     public void From_names_round_trip()
     {
         var set = PermissionSet.FromNames(["shift.open", "SHIFT.OPEN", "sale.create"]);

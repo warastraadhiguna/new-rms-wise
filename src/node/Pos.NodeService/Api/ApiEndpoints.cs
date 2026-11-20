@@ -33,7 +33,8 @@ public static class ApiEndpoints
         // 201 when created, 200 when the same sale id was already stored (idempotent retry from the client).
         api.MapPost("/sales", async (CreateSaleRequest request, SaleService service, HttpContext http, ClaimsPrincipal user, CancellationToken ct) =>
             {
-                var result = await service.CreateAsync(request, DeviceFilter.DeviceId(http), user.UserId(), ct);
+                var result = await service.CreateAsync(request, DeviceFilter.DeviceId(http), user.UserId(),
+                    canUseAnyShift: user.HasPermission(Permissions.ShiftShare), ct);
                 return result.Replayed ? Results.Ok(result) : Results.Created($"/api/v1/sales/{result.Sale.Id}", result);
             })
             .AddEndpointFilter<DeviceFilter>()

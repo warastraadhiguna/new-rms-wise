@@ -9,6 +9,9 @@ public static class Permissions
     public const string ShiftOpen = "shift.open";
     public const string ShiftClose = "shift.close";
     public const string SaleCreate = "sale.create";
+
+    /// <summary>Sell on a shift opened by another user (otherwise only the shift owner may sell).</summary>
+    public const string ShiftShare = "shift.share";
 }
 
 /// <summary>
@@ -30,6 +33,20 @@ public sealed class PermissionSet
         _names.Contains(Permissions.All) || _names.Contains(permission.Trim().ToLowerInvariant());
 
     public static PermissionSet FromNames(IEnumerable<string> names) => new(names);
+
+    /// <summary>
+    /// Permissions present in both sets; <c>"*"</c> on one side keeps the other side. Used to keep only the
+    /// token's permissions that the user still has, so revocations apply at once and grants need a new login.
+    /// </summary>
+    public PermissionSet Intersect(PermissionSet other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        if (_names.Contains(Permissions.All))
+            return other;
+        if (other._names.Contains(Permissions.All))
+            return this;
+        return new PermissionSet(_names.Where(other._names.Contains));
+    }
 
     /// <exception cref="FormatException">A role's permissions are not a JSON array of strings.</exception>
     public static PermissionSet FromRoleJson(IEnumerable<string?> rolePermissions)

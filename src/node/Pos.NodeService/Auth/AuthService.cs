@@ -95,13 +95,7 @@ public sealed class AuthService(TransactionRunner runner, NodeIdentity nodeIdent
 
         await SaveAsync(c, tx, loginName, LoginThrottle.OnSuccess(), lastFailedAt: null, ct);
 
-        var rolePermissions = (await c.QueryAsync<string?>(new CommandDefinition(
-            """
-            SELECT CAST(r.permissions AS CHAR)
-            FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-            WHERE ur.user_id = @Id AND ur.deleted_at IS NULL AND r.deleted_at IS NULL
-              AND (ur.node_id IS NULL OR ur.node_id = @nodeId)
-            """, new { user!.Id, nodeId = node.Id }, tx, cancellationToken: ct))).ToList();
+        var rolePermissions = await UserAccessQueries.RolePermissionsAsync(c, tx, user!.Id, node.Id, ct);
 
         return rolePermissions.Count == 0
             ? new Outcome(User: user, HasNodeAccess: false)

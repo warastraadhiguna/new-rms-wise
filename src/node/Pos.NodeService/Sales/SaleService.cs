@@ -28,8 +28,10 @@ public sealed class SaleService(TransactionRunner runner, NodeIdentity nodeIdent
 {
     /// <param name="deviceId">The device the request came from (header X-Device-Id).</param>
     /// <param name="userId">The logged-in cashier; stored as <c>created_by</c>.</param>
+    /// <param name="canUseAnyShift">Permission <c>shift.share</c>: may sell on a shift opened by another user.</param>
     public async Task<CreateSaleResult> CreateAsync(
-        CreateSaleRequest request, Guid deviceId, Guid userId, CancellationToken cancellationToken = default)
+        CreateSaleRequest request, Guid deviceId, Guid userId, bool canUseAnyShift = false,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.Id.Version != 7)
@@ -45,7 +47,7 @@ public sealed class SaleService(TransactionRunner runner, NodeIdentity nodeIdent
 
         try
         {
-            return await runner.RunAsync((c, tx, ct) => CreateWithinAsync(c, tx, node, request, deviceId, userId, ct),
+            return await runner.RunAsync((c, tx, ct) => CreateWithinAsync(c, tx, node, request, deviceId, userId, canUseAnyShift, ct),
                 "Create sale", cancellationToken);
         }
         catch (MySqlException ex) when (ex.ErrorCode == MySqlErrorCode.DuplicateKeyEntry)
@@ -66,16 +68,20 @@ public sealed class SaleService(TransactionRunner runner, NodeIdentity nodeIdent
 
     private async Task<CreateSaleResult> CreateWithinAsync(
         MySqlConnection c, MySqlTransaction tx, NodeInfo node, CreateSaleRequest request, Guid deviceId, Guid userId,
-        CancellationToken ct)
+        bool canUseAnyShift, CancellationToken ct)
     {
         var lines = request.Lines!;
         var payments = request.Payments ?? [];
 
         // Shared lock: a shift close (FOR UPDATE) waits until this sale commits.
-        var shiftId = await c.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
-            "SELECT id FROM cashier_shifts WHERE device_id = @deviceId AND node_id = @nodeId AND status = @open FOR SHARE",
+        var shift = await c.QuerySingleOrDefaultAsync<(Guid Id, Guid CashierId, string Number)?>(new CommandDefinition(
+            "SELECT id, cashier_id, number FROM cashier_shifts WHERE device_id = @deviceId AND node_id = @nodeId AND status = @open FOR SHARE",
             new { deviceId, nodeId = node.Id, open = ShiftStatus.Open }, tx, cancellationToken: ct))
             ?? throw ApiException.Conflict("no_open_shift", $"Device {deviceId} has no open shift.");
+        if (shift.CashierId != userId && !canUseAnyShift)
+            throw new ApiException(StatusCodes.Status403Forbidden, "not_shift_owner",
+                $"Shift {shift.Number} belongs to another cashier; close it and open your own shift.");
+        var shiftId = shift.Id;
 
         var customer = request.CustomerId is { } customerId
             ? await c.QuerySingleOrDefaultAsync<CustomerRow>(new CommandDefinition(

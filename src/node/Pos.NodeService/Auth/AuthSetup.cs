@@ -28,13 +28,17 @@ public static class AuthSetup
                 options.TokenValidationParameters = tokens.ValidationParameters();
                 options.Events = new JwtBearerEvents
                 {
+                    OnTokenValidated = RecheckUserAsync,
                     OnChallenge = async context =>
                     {
                         context.HandleResponse();
-                        var expired = context.AuthenticateFailure is SecurityTokenExpiredException;
-                        await WriteProblemAsync(context.Response, StatusCodes.Status401Unauthorized,
-                            expired ? "token_expired" : "unauthorized",
-                            expired ? "The access token has expired; log in again." : "A valid access token is required.");
+                        var (code, detail) = context.AuthenticateFailure switch
+                        {
+                            SecurityTokenExpiredException => ("token_expired", "The access token has expired; log in again."),
+                            UserInactiveException => ("user_inactive", "This user is no longer active."),
+                            _ => ("unauthorized", "A valid access token is required."),
+                        };
+                        await WriteProblemAsync(context.Response, StatusCodes.Status401Unauthorized, code, detail);
                     },
                     OnForbidden = context => WriteProblemAsync(context.Response, StatusCodes.Status403Forbidden,
                         "forbidden", "You do not have permission for this action."),
@@ -45,15 +49,46 @@ public static class AuthSetup
         {
             foreach (var permission in new[] { Permissions.ShiftOpen, Permissions.ShiftClose, Permissions.SaleCreate })
             {
-                options.AddPolicy(permission, policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
-                    context.User.FindAll(TokenService.PermissionClaim)
-                        .Any(c => c.Value == permission || c.Value == Permissions.All)));
+                options.AddPolicy(permission, policy => policy.RequireAuthenticatedUser()
+                    .RequireAssertion(context => context.User.HasPermission(permission)));
             }
         });
 
+        services.AddSingleton(sp => new UserAccessCache(
+            sp.GetRequiredService<Data.DbConnectionFactory>(),
+            sp.GetRequiredService<Nodes.NodeIdentity>(),
+            sp.GetRequiredService<TimeProvider>(),
+            UserAccessCache.TtlFrom(sp.GetRequiredService<IConfiguration>().GetValue<int?>("Auth:UserCacheSeconds"))));
         services.AddSingleton<AuthService>();
         return services;
     }
+
+    /// <summary>
+    /// Every authenticated request: the user must still be active and not deleted, and only the token's
+    /// permissions that the user still has at this node remain (revocations apply within the cache time).
+    /// </summary>
+    private static async Task RecheckUserAsync(TokenValidatedContext context)
+    {
+        var principal = context.Principal!;
+        var access = context.HttpContext.RequestServices.GetRequiredService<UserAccessCache>();
+        var current = await access.GetAsync(principal.UserId(), context.HttpContext.RequestAborted);
+        if (current is null)
+        {
+            context.Fail(new UserInactiveException());
+            return;
+        }
+
+        var effective = PermissionSet.FromNames(principal.FindAll(TokenService.PermissionClaim).Select(c => c.Value)).Intersect(current);
+        var identity = new ClaimsIdentity(
+            principal.Claims.Where(c => c.Type != TokenService.PermissionClaim)
+                .Concat(effective.Names.Select(p => new Claim(TokenService.PermissionClaim, p))),
+            principal.Identity?.AuthenticationType, TokenService.NameClaim, ClaimTypes.Role);
+        context.Principal = new ClaimsPrincipal(identity);
+    }
+
+    /// <summary>True when the (re-checked) user has the permission or the wildcard.</summary>
+    public static bool HasPermission(this ClaimsPrincipal user, string permission) =>
+        user.FindAll(TokenService.PermissionClaim).Any(c => c.Value == permission || c.Value == Permissions.All);
 
     /// <summary>The logged-in user's id (<c>sub</c>).</summary>
     public static Guid UserId(this ClaimsPrincipal user) =>

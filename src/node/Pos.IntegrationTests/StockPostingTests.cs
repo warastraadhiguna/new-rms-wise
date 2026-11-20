@@ -226,8 +226,15 @@ public class StockPostingTests(DatabaseFixture db)
                 "SELECT * FROM stock_balances WHERE product_id = @product FOR UPDATE", new { product }, tx);
 
             var sale = impatient.PostAsync([Movement(product, StockDirection.Out, 4m)]);
-            await Task.Delay(TimeSpan.FromSeconds(1.6));
-            Assert.False(sale.IsCompleted, "sale must wait for the blocker");
+
+            // Wait for the first 1205 retry instead of a fixed delay (slow machines, busy CI).
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (log.Warnings.Count == 0 && !sale.IsCompleted && DateTime.UtcNow < deadline)
+                await Task.Delay(50);
+
+            Assert.False(sale.IsCompleted,
+                $"sale must still wait for the blocker (status {sale.Status}: {sale.Exception?.GetBaseException().Message})");
+            Assert.NotEmpty(log.Warnings);
             await tx.CommitAsync();
 
             await sale;
