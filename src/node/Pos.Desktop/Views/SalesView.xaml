@@ -141,7 +141,8 @@
                 <TextBlock Text="Member" VerticalAlignment="Center" Width="60" />
                 <Button x:Name="PickCustomerButton" DockPanel.Dock="Right" Content="..." MinWidth="0" Padding="6,0"
                         Command="{Binding PickCustomerCommand}" />
-                <TextBox x:Name="MemberBox" Text="{Binding CustomerText, UpdateSourceTrigger=PropertyChanged}" Padding="2">
+                <TextBox x:Name="MemberBox" Text="{Binding CustomerText, UpdateSourceTrigger=PropertyChanged}" Padding="2"
+                         infra:FocusBehavior.Key="member">
                     <TextBox.InputBindings>
                         <KeyBinding Key="Enter" Command="{Binding MemberEnterCommand}" />
                     </TextBox.InputBindings>

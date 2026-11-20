@@ -129,7 +129,8 @@ public sealed class SaleService(
             var check = Validate(() => CreditCheck.Evaluate(customer!.CreditLimit, outstanding, totals.CreditAmount));
             if (check.LimitExceeded)
                 warnings.Add(new SaleWarning("credit_limit_exceeded",
-                    $"Customer credit {check.OutstandingAfter} exceeds the limit {customer!.CreditLimit} by {check.ExceededBy}."));
+                    $"Customer credit {check.OutstandingAfter} exceeds the limit {customer!.CreditLimit} by {check.ExceededBy}.",
+                    customer.CreditLimit, check.OutstandingAfter, check.ExceededBy));
         }
 
         var lineIds = resolved.Select(_ => Guid.CreateVersion7()).ToList();

@@ -32,7 +32,11 @@ public sealed record SaleLineRequest(
 /// <param name="Amount">Money handed over with this method; for cash this may exceed the total (change).</param>
 public sealed record SalePaymentRequest(string Method, decimal Amount, string? Reference = null);
 
-public sealed record SaleWarning(string Code, string Message);
+/// <param name="CreditLimit">credit_limit_exceeded: the customer's limit,</param>
+/// <param name="OutstandingAfter">the receivable after this sale,</param>
+/// <param name="ExceededBy">and how far it is over the limit.</param>
+public sealed record SaleWarning(
+    string Code, string Message, decimal? CreditLimit = null, decimal? OutstandingAfter = null, decimal? ExceededBy = null);
 
 public sealed record CreateSaleResult(SaleDto Sale, IReadOnlyList<SaleWarning> Warnings, bool Replayed);
 

@@ -82,14 +82,14 @@
                      Text="{Binding GrandTotal, Mode=OneWay, Converter={StaticResource Number}}" />
 
             <!-- 4 Bayar (large) -->
-            <TextBlock Grid.Row="4" Text="Bayar" Style="{StaticResource Label}" />
+            <TextBlock x:Name="BayarLabel" Grid.Row="4" Text="{Binding BayarLabel}" Style="{StaticResource Label}" />
             <TextBox Grid.Row="4" Grid.Column="1" x:Name="BayarBox" Style="{StaticResource Input}" FontSize="26" Padding="3,4"
                      infra:MoneyBox.IsEnabled="True"
                      infra:FocusBehavior.Key="bayar" infra:EnterNavigation.SubmitCommand="{Binding BayarEnterCommand}"
                      Text="{Binding BayarText, UpdateSourceTrigger=PropertyChanged}" />
 
             <!-- 5 Kembali (large, right aligned) -->
-            <TextBlock Grid.Row="5" Text="Kembali" Style="{StaticResource DimLabel}" />
+            <TextBlock x:Name="ChangeLabel" Grid.Row="5" Text="{Binding ChangeLabel}" Style="{StaticResource DimLabel}" />
             <TextBox Grid.Row="5" Grid.Column="1" x:Name="ChangeBox" Style="{StaticResource ReadOnly}"
                      Background="White" FontSize="30" TextAlignment="Right"
                      Text="{Binding Change, Mode=OneWay, Converter={StaticResource Number}}" />

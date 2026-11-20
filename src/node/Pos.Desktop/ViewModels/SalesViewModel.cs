@@ -448,6 +448,13 @@ public sealed partial class SalesViewModel : ObservableObject
 
         var payment = new PaymentViewModel(_api, _dialogs, config, _cart, Customer, _pendingSaleId.Value);
         var result = _dialogs.ShowPayment(payment);
+        if (result is null && payment.MemberRequired)
+        {
+            // KREDIT without a Member: say so and put the cashier in the Member box (F6 again afterwards).
+            StatusMessage = payment.ErrorMessage;
+            RequestFocus("member");
+            return;
+        }
         if (result is null)
         {
             RequestFocus("search");
@@ -461,7 +468,7 @@ public sealed partial class SalesViewModel : ObservableObject
         _dialogs.ShowSaleResult(result);
         StatusMessage = $"Nota {result.Sale.Number} tersimpan. Kembali Rp {result.Sale.Change.ToString("#,0", Indonesian)}."
                         + (printed.Message is { } problem ? " " + problem : "");
-        WarningMessage = result.Warnings.Count == 0 ? null : string.Join(" ", result.Warnings.Select(SaleWarningText));
+        WarningMessage = result.Warnings.Count == 0 ? null : string.Join(" ", result.Warnings.Select(w => w.Text));
         RequestFocus("search");
     }
 
@@ -494,12 +501,6 @@ public sealed partial class SalesViewModel : ObservableObject
                 $"Struk gagal dicetak: {ex.Message} Penjualan tetap tersimpan; tekan F5 untuk cetak ulang.");
         }
     }
-
-    private static string SaleWarningText(SaleWarningInfo warning) => warning.Code switch
-    {
-        "credit_limit_exceeded" => "Kredit pelanggan melebihi limit.",
-        _ => warning.Message,
-    };
 
     // ---- cancel and close ------------------------------------------------------------------------
 

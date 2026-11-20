@@ -58,8 +58,7 @@ public sealed partial class SaleResultViewModel(Services.SaleResult result) : Di
     public string Number { get; } = result.Sale.Number;
     public decimal Total { get; } = result.Sale.Total;
     public decimal Change { get; } = result.Sale.Change;
-    public string Warnings { get; } = string.Join(" ", result.Warnings.Select(w =>
-        w.Code == "credit_limit_exceeded" ? "Kredit pelanggan melebihi limit." : w.Message));
+    public string Warnings { get; } = string.Join(" ", result.Warnings.Select(w => w.Text));
 
     [RelayCommand]
     private void Close() => DialogResult = true;

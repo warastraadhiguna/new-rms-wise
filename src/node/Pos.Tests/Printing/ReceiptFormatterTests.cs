@@ -144,7 +144,7 @@ public class ReceiptFormatterTests
     }
 
     [Fact]
-    public void Credit_sale_shows_member_method_and_due_date()
+    public void Credit_sale_without_dp_shows_uang_muka_0_sisa_piutang_and_due_date()
     {
         var credit = new ReceiptPayment("KREDIT", IsCash: false, IsCredit: true, Amount: 19500m, Tendered: null, Change: null);
 
@@ -152,8 +152,31 @@ public class ReceiptFormatterTests
 
         Assert.Contains("Member : C000001 - Budi Pelanggan", lines);
         Assert.Contains(R("Cara Bayar", "KREDIT"), lines);
-        Assert.Contains(R("Bayar", "19.500"), lines);
-        Assert.Contains(R("Kembali", "0"), lines);
+        Assert.Contains(R("Uang Muka", "0"), lines);
+        Assert.Contains(R("Sisa Piutang", "19.500"), lines);
+        Assert.Contains(R("Jatuh Tempo", "04/12/2026"), lines);
+        Assert.DoesNotContain(lines, l => l.StartsWith("Bayar", StringComparison.Ordinal) || l.StartsWith("Kembali", StringComparison.Ordinal));
+        // order: Grand Total, Cara Bayar, Uang Muka, Sisa Piutang, Jatuh Tempo
+        var at = lines.ToList().IndexOf(R("Cara Bayar", "KREDIT"));
+        Assert.Equal(R("Uang Muka", "0"), lines[at + 1]);
+        Assert.Equal(R("Sisa Piutang", "19.500"), lines[at + 2]);
+        Assert.Equal(R("Jatuh Tempo", "04/12/2026"), lines[at + 3]);
+    }
+
+    [Fact]
+    public void Credit_sale_with_dp_shows_the_dp_as_uang_muka_and_the_rest_as_sisa_piutang()
+    {
+        ReceiptPayment[] payments =
+        [
+            new("TUNAI", IsCash: true, IsCredit: false, Amount: 5000m, Tendered: 5000m, Change: 0m),
+            new("KREDIT", IsCash: false, IsCredit: true, Amount: 14500m, Tendered: null, Change: null),
+        ];
+
+        var lines = ReceiptFormatter.Format(Sample(payments: payments, customer: "C000001 - Budi", dueDate: new DateOnly(2026, 12, 4)), 48);
+
+        Assert.Contains(R("Cara Bayar", "KREDIT"), lines);
+        Assert.Contains(R("Uang Muka", "5.000"), lines);
+        Assert.Contains(R("Sisa Piutang", "14.500"), lines);
         Assert.Contains(R("Jatuh Tempo", "04/12/2026"), lines);
     }
 

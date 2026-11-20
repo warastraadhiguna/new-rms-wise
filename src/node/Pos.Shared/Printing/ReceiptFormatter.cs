@@ -39,7 +39,8 @@ public sealed record ReceiptData(
 /// <summary>
 /// Lays out an RMS 2 style receipt as plain text lines for a fixed-width thermal printer:
 /// header, (CETAK ULANG), number/date/cashier, items ("qty unit x price" + subtotal on the right),
-/// SubTotal, Potongan/Diskon, Pembulatan (when not zero), Grand Total, Cara Bayar, Bayar, Kembali, footer.
+/// SubTotal, Potongan/Diskon, Pembulatan (when not zero), Grand Total, Cara Bayar, Bayar, Kembali (credit sales:
+/// Uang Muka, Sisa Piutang, Jatuh Tempo), footer.
 /// Numbers use dot thousands and a decimal comma. No line is wider than the paper.
 /// </summary>
 public static class ReceiptFormatter
@@ -95,10 +96,21 @@ public static class ReceiptFormatter
             lines.AddRange(Row("Pembulatan", Number(data.RoundingAmount), width));
         lines.AddRange(Row("Grand Total", Number(data.Total), width));
 
-        var methods = data.Payments.Count == 0 ? "-" : string.Join(" + ", data.Payments.Select(p => p.MethodName));
-        lines.AddRange(Row("Cara Bayar", methods, width));
-        lines.AddRange(Row("Bayar", Number(data.Payments.Sum(p => p.Tendered ?? p.Amount)), width));
-        lines.AddRange(Row("Kembali", Number(data.Payments.Sum(p => p.Change ?? 0m)), width));
+        if (data.Payments.Any(p => p.IsCredit))
+        {
+            // Credit sale: the cash part is the down payment (Uang Muka), the credit part the receivable.
+            var creditNames = string.Join(" + ", data.Payments.Where(p => p.IsCredit).Select(p => p.MethodName).Distinct());
+            lines.AddRange(Row("Cara Bayar", creditNames, width));
+            lines.AddRange(Row("Uang Muka", Number(data.Payments.Where(p => !p.IsCredit).Sum(p => p.Amount)), width));
+            lines.AddRange(Row("Sisa Piutang", Number(data.Payments.Where(p => p.IsCredit).Sum(p => p.Amount)), width));
+        }
+        else
+        {
+            var methods = data.Payments.Count == 0 ? "-" : string.Join(" + ", data.Payments.Select(p => p.MethodName));
+            lines.AddRange(Row("Cara Bayar", methods, width));
+            lines.AddRange(Row("Bayar", Number(data.Payments.Sum(p => p.Tendered ?? p.Amount)), width));
+            lines.AddRange(Row("Kembali", Number(data.Payments.Sum(p => p.Change ?? 0m)), width));
+        }
         if (data.DueDate is { } due)
             lines.AddRange(Row("Jatuh Tempo", due.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture), width));
         lines.Add(rule);

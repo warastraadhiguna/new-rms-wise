@@ -101,6 +101,35 @@ public class ReceiptServiceTests
     }
 
     [Fact]
+    public async Task Credit_sale_with_dp_prints_uang_muka_sisa_piutang_and_jatuh_tempo_and_opens_the_drawer()
+    {
+        _api.OnGetSale = id => Receipts.Detail(id) with
+        {
+            Customer = new SaleCustomer(Guid.CreateVersion7(), "C000001", "Budi Pelanggan"),
+            Total = 19500m,
+            CreditAmount = 14500m,
+            Change = 0m,
+            DueDate = new DateOnly(2026, 12, 4),
+            Payments =
+            [
+                new SaleDetailPayment("CASH", "TUNAI", true, false, 5000m, 5000m, 0m, null),
+                new SaleDetailPayment("CREDIT", "KREDIT", false, true, 14500m, null, null, null),
+            ],
+        };
+
+        await Service().PrintAsync(_saleId, reprint: false);
+
+        var data = Assert.Single(_printer.Jobs).Data;
+        var text = Text(data);
+        Assert.Contains("Member : C000001 - Budi Pelanggan", text);
+        Assert.Matches(@"Uang Muka +5\.000\n", text);
+        Assert.Matches(@"Sisa Piutang +14\.500\n", text);
+        Assert.Matches(@"Jatuh Tempo +04/12/2026\n", text);
+        Assert.DoesNotContain("Kembali", text);
+        Assert.True(Contains(data, DrawerPulse));            // the DP is cash
+    }
+
+    [Fact]
     public async Task Sale_that_cannot_be_loaded_gives_a_message_and_no_preview()
     {
         _api.OnGetSale = _ => throw new NodeApiException("Node Service tidak dapat dihubungi.", null, null);

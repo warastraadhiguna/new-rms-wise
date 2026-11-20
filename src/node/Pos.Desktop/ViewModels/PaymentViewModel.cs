@@ -90,6 +90,9 @@ public sealed partial class PaymentViewModel : DialogViewModel
         if (!IsReferenceEnabled)
             ReferenceText = "";
         OnPropertyChanged(nameof(IsReferenceEnabled));
+        OnPropertyChanged(nameof(IsCredit));
+        OnPropertyChanged(nameof(BayarLabel));
+        OnPropertyChanged(nameof(ChangeLabel));
         Recalculate();
     }
 
@@ -109,6 +112,16 @@ public sealed partial class PaymentViewModel : DialogViewModel
     }
 
     private bool IsCash => SelectedMethod?.IsCash == true;
+
+    /// <summary>KREDIT: Bayar is the down payment (DP), Kembali is the remaining receivable.</summary>
+    public bool IsCredit => SelectedMethod?.IsCredit == true;
+
+    public string BayarLabel => IsCredit ? "Uang Muka (DP)" : "Bayar";
+
+    public string ChangeLabel => IsCredit ? "Sisa Piutang" : "Kembali";
+
+    /// <summary>KREDIT was saved without a Member: the dialog closed so the cashier can choose one in the form.</summary>
+    public bool MemberRequired { get; private set; }
 
     private CashRoundingSettings Rounding => new(_config.CashRoundingStep, CashRoundingModes.Parse(_config.CashRoundingMode));
 
@@ -143,14 +156,17 @@ public sealed partial class PaymentViewModel : DialogViewModel
                 DiscountAmount = 0m;
             }
 
-            var afterDiscount = Total - DiscountAmount;
-            GrandTotal = IsCash ? Rupiah.RoundCash(afterDiscount, Rounding.Step, Rounding.Mode).Total : afterDiscount;
-
-            // Non-cash pays exactly the grand total (RMS 2); cash is typed by the cashier.
-            if (!IsCash)
+            // DEBIT/QRIS/TRANSFER pay exactly the grand total (RMS 2); cash and the credit DP are typed by the cashier.
+            if (!IsCash && !IsCredit)
+            {
+                GrandTotal = ComputeGrandTotal();
                 BayarText = Format(GrandTotal);
+            }
             else if (!_bayarEdited)
+            {
                 BayarText = "";
+            }
+            GrandTotal = ComputeGrandTotal();
         }
         finally
         {
@@ -159,17 +175,41 @@ public sealed partial class PaymentViewModel : DialogViewModel
         UpdateChange();
     }
 
-    private void UpdateChange() =>
+    /// <summary>
+    /// Same rule as the server: cash rounding only when cash is paid, i.e. TUNAI, or KREDIT with a DP above zero.
+    /// </summary>
+    private decimal ComputeGrandTotal()
+    {
+        var afterDiscount = Total - DiscountAmount;
+        var cashUsed = IsCash || (IsCredit && ReadDownPayment() is > 0);
+        return cashUsed ? Rupiah.RoundCash(afterDiscount, Rounding.Step, Rounding.Mode).Total : afterDiscount;
+    }
+
+    /// <summary>KREDIT: the DP typed in the Bayar box; empty = 0, null = not a valid amount.</summary>
+    private decimal? ReadDownPayment() =>
+        BayarText.Trim().Length == 0 ? 0m : MoneyInput.TryParse(BayarText, out var dp) ? dp : null;
+
+    /// <summary>"Kembali" for cash; "Sisa Piutang" (Grand Total - DP) for KREDIT.</summary>
+    private void UpdateChange()
+    {
+        if (IsCredit)
+        {
+            GrandTotal = ComputeGrandTotal();
+            Change = ReadDownPayment() is { } dp ? Math.Max(0m, GrandTotal - dp) : GrandTotal;
+            return;
+        }
         Change = IsCash && MoneyInput.TryParse(BayarText, out var bayar) && bayar > GrandTotal ? bayar - GrandTotal : 0m;
+    }
 
     /// <summary>
     /// Enter on Bayar. Empty Bayar = "uang pas" (owner revision): Bayar becomes the Grand Total (Kembali 0) and the
-    /// sale is saved at once, for every payment method. A typed amount that is too low still gets the message.
+    /// sale is saved at once. For KREDIT the box is the DP: empty = DP 0, the whole Grand Total becomes receivable.
+    /// A typed amount that is too low still gets the message.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private Task BayarEnterAsync()
     {
-        if (BayarText.Trim().Length == 0)
+        if (BayarText.Trim().Length == 0 && !IsCredit)
             BayarText = Format(GrandTotal);
         return SaveAsync();
     }
@@ -191,20 +231,14 @@ public sealed partial class PaymentViewModel : DialogViewModel
             return;
         }
 
-        var bayar = 0m;
-        if (BayarText.Trim().Length > 0 && !MoneyInput.TryParse(BayarText, out bayar))
-        {
-            ErrorMessage = "Jumlah bayar tidak valid.";
-            Focus("bayar");
+        var paid = method.IsCredit ? CreditPayments(method) : SinglePayment(method);
+        if (paid is null)
             return;
-        }
 
-        var kind = method.IsCash ? PaymentKind.Cash : method.IsCredit ? PaymentKind.Credit : PaymentKind.NonCash;
-        PaymentInput[] payments = bayar > 0 ? [new PaymentInput(kind, bayar)] : [];
         try
         {
-            SaleCalculator.Calculate(_cart.Lines.Select(l => l.SubTotal).ToList(), payments, Rounding, _customer is not null,
-                discount, _config.CurrencyDecimals);
+            SaleCalculator.Calculate(_cart.Lines.Select(l => l.SubTotal).ToList(), paid.Select(p => p.Input).ToList(), Rounding,
+                _customer is not null, discount, _config.CurrencyDecimals);
         }
         catch (SaleValidationException ex)
         {
@@ -230,7 +264,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
             SaleId,
             _customer?.Id,
             _cart.Lines.Select(l => new SaleLineRequest(l.Item.ProductUnitId, l.Qty)).ToList(),
-            payments.Length == 0 ? [] : [new SalePaymentRequest(method.Code, bayar, reference)],
+            paid.Select(p => new SalePaymentRequest(p.Method.Code, p.Input.Amount, p.Method.IsCash || p.Method.IsCredit ? null : reference)).ToList(),
             string.IsNullOrWhiteSpace(NotesText) ? null : NotesText.Trim(),
             discount.PercentValue,
             discount.AmountValue,
@@ -260,6 +294,66 @@ public sealed partial class PaymentViewModel : DialogViewModel
     }
 
     private bool CanSave() => !IsBusy;
+
+    private sealed record PaidWith(PaymentMethodInfo Method, PaymentInput Input);
+
+    /// <summary>TUNAI / DEBIT / QRIS / TRANSFER: one payment of the typed amount (none when Bayar is empty).</summary>
+    private List<PaidWith>? SinglePayment(PaymentMethodInfo method)
+    {
+        var bayar = 0m;
+        if (BayarText.Trim().Length > 0 && !MoneyInput.TryParse(BayarText, out bayar))
+        {
+            ErrorMessage = "Jumlah bayar tidak valid.";
+            Focus("bayar");
+            return null;
+        }
+        var kind = method.IsCash ? PaymentKind.Cash : PaymentKind.NonCash;
+        return bayar > 0 ? [new PaidWith(method, new PaymentInput(kind, bayar))] : [];
+    }
+
+    /// <summary>
+    /// KREDIT: a Member is required; the DP (0..Grand Total) is paid as TUNAI and the rest is the receivable, so the
+    /// server records exactly that rest as credit.
+    /// </summary>
+    private List<PaidWith>? CreditPayments(PaymentMethodInfo credit)
+    {
+        if (_customer is null)
+        {
+            ErrorMessage = "Pembayaran KREDIT wajib memilih Member. Pilih Member, lalu tekan Bayar [F6] lagi.";
+            MemberRequired = true;
+            DialogResult = false;
+            return null;
+        }
+        if (ReadDownPayment() is not { } dp)
+        {
+            ErrorMessage = "Uang muka tidak valid.";
+            Focus("bayar");
+            return null;
+        }
+
+        var grandTotal = ComputeGrandTotal();
+        if (dp > grandTotal)
+        {
+            ErrorMessage = "Uang muka tidak boleh melebihi Grand Total.";
+            Focus("bayar");
+            return null;
+        }
+
+        var payments = new List<PaidWith>();
+        if (dp > 0)
+        {
+            if (_config.PaymentMethods.FirstOrDefault(m => m.IsCash) is not { } cash)
+            {
+                ErrorMessage = "Cara bayar TUNAI tidak tersedia untuk uang muka.";
+                Focus("bayar");
+                return null;
+            }
+            payments.Add(new PaidWith(cash, new PaymentInput(PaymentKind.Cash, dp)));
+        }
+        if (grandTotal - dp > 0)
+            payments.Add(new PaidWith(credit, new PaymentInput(PaymentKind.Credit, grandTotal - dp)));
+        return payments;
+    }
 
     private void Focus(string target) => FocusRequest = new FocusRequest(target, ++_focusSequence);
 

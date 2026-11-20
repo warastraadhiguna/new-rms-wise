@@ -109,7 +109,22 @@ public sealed record SaleSummary(
     Guid Id, string Number, decimal Subtotal, decimal DiscountAmount, decimal RoundingAmount, decimal Total,
     decimal Change, decimal CreditAmount);
 
-public sealed record SaleWarningInfo(string Code, string Message);
+/// <summary>A warning about a saved sale (the sale is NOT blocked).</summary>
+public sealed record SaleWarningInfo(
+    string Code, string Message, decimal? CreditLimit = null, decimal? OutstandingAfter = null, decimal? ExceededBy = null)
+{
+    private static readonly System.Globalization.CultureInfo Indonesian = System.Globalization.CultureInfo.GetCultureInfo("id-ID");
+
+    /// <summary>What the cashier reads (Indonesian).</summary>
+    public string Text => Code switch
+    {
+        "credit_limit_exceeded" when CreditLimit is { } limit && OutstandingAfter is { } after && ExceededBy is { } over =>
+            $"Piutang pelanggan menjadi Rp {after.ToString("#,0", Indonesian)}, melebihi limit Rp {limit.ToString("#,0", Indonesian)} " +
+            $"(lebih Rp {over.ToString("#,0", Indonesian)}). Penjualan tetap tersimpan.",
+        "credit_limit_exceeded" => "Kredit pelanggan melebihi limit. Penjualan tetap tersimpan.",
+        _ => Message,
+    };
+}
 
 public sealed record SaleResult(SaleSummary Sale, IReadOnlyList<SaleWarningInfo> Warnings, bool Replayed);
 

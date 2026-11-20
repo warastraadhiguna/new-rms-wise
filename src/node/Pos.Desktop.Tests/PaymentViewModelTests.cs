@@ -183,7 +183,9 @@ public class PaymentViewModelTests
 
         await vm.SaveCommand.ExecuteAsync(null);
 
-        Assert.Equal("Pembayaran kredit wajib memilih member/pelanggan.", vm.ErrorMessage);
+        Assert.Equal("Pembayaran KREDIT wajib memilih Member. Pilih Member, lalu tekan Bayar [F6] lagi.", vm.ErrorMessage);
+        Assert.True(vm.MemberRequired);
+        Assert.False(vm.DialogResult);
         Assert.Empty(_api.SaleRequests);
     }
 

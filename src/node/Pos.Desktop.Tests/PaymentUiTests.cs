@@ -118,7 +118,6 @@ public class PaymentUiTests
     [InlineData("DEBIT", 13680)]
     [InlineData("QRIS", 13680)]
     [InlineData("TRANSFER", 13680)]
-    [InlineData("CREDIT", 13680)]
     public void Enter_on_an_empty_bayar_pays_the_exact_amount_and_saves(string method, int expected) =>
         WithDialog(Cart13680(), (window, vm) =>
         {
@@ -137,7 +136,7 @@ public class PaymentUiTests
             Assert.Equal("0", Find<TextBox>(window, "ChangeBox").Text);
             Assert.True(vm.DialogResult);
             Assert.False(window.IsVisible);
-        }, customer: method == "CREDIT" ? CreditCustomer : null);
+        });
 
     [Fact]
     public void Enter_on_an_empty_bayar_right_after_opening_saves_cash_uang_pas() => WithDialog(Cart13680(), (window, _) =>
@@ -176,6 +175,186 @@ public class PaymentUiTests
 
         Assert.Empty(_api.SaleRequests);
         Assert.Equal("Jumlah bayar kurang dari total.", Find<TextBlock>(window, "ErrorText").Text);
+    });
+
+    // ---- KREDIT: Uang Muka (DP) and Sisa Piutang --------------------------------------------------
+
+    private void SelectCredit(PaymentDialog window)
+    {
+        Find<ComboBox>(window, "MethodBox").SelectedItem = _api.Config.PaymentMethods.Single(m => m.IsCredit);
+        DoEvents();
+    }
+
+    [Fact]
+    public void Kredit_renames_bayar_to_uang_muka_and_kembali_to_sisa_piutang() => WithDialog(Cart13680(), (window, _) =>
+    {
+        Assert.Equal("Bayar", Find<TextBlock>(window, "BayarLabel").Text);
+        Assert.Equal("Kembali", Find<TextBlock>(window, "ChangeLabel").Text);
+
+        SelectCredit(window);
+
+        Assert.Equal("Uang Muka (DP)", Find<TextBlock>(window, "BayarLabel").Text);
+        Assert.Equal("Sisa Piutang", Find<TextBlock>(window, "ChangeLabel").Text);
+        Assert.Equal("", Find<TextBox>(window, "BayarBox").Text);                 // DP starts empty
+        Assert.Equal("13.680", Find<TextBox>(window, "GrandTotalBox").Text);      // no cash, no rounding
+        Assert.Equal("13.680", Find<TextBox>(window, "ChangeBox").Text);          // all of it is receivable
+
+        Find<ComboBox>(window, "MethodBox").SelectedItem = _api.Config.PaymentMethods.Single(m => m.IsCash);
+        DoEvents();
+        Assert.Equal("Bayar", Find<TextBlock>(window, "BayarLabel").Text);
+        Assert.Equal("Kembali", Find<TextBlock>(window, "ChangeLabel").Text);
+    }, customer: CreditCustomer);
+
+    [Fact]
+    public void Kredit_enter_on_an_empty_dp_saves_dp_0_and_the_whole_grand_total_as_credit() => WithDialog(Cart13680(), (window, vm) =>
+    {
+        SelectCredit(window);
+        var dp = Find<TextBox>(window, "BayarBox");
+        dp.Focus();
+
+        PressKey(dp, Key.Enter);
+
+        var request = Assert.Single(_api.SaleRequests);
+        Assert.Equal(CreditCustomer.Id, request.CustomerId);
+        var payment = Assert.Single(request.Payments);
+        Assert.Equal(("CREDIT", 13680m), (payment.Method, payment.Amount));
+        Assert.True(vm.DialogResult);
+    }, customer: CreditCustomer);
+
+    [Fact]
+    public void Kredit_with_a_dp_sends_the_dp_as_tunai_and_the_rest_as_credit() => WithDialog(Cart13680(), (window, _) =>
+    {
+        SelectCredit(window);
+        var dp = Find<TextBox>(window, "BayarBox");
+        dp.Focus();
+        Type(dp, "5000");
+
+        Assert.Equal("5.000", dp.Text);
+        Assert.Equal("13.700", Find<TextBox>(window, "GrandTotalBox").Text);      // cash paid → rounded like the server
+        Assert.Equal("8.700", Find<TextBox>(window, "ChangeBox").Text);           // Sisa Piutang
+
+        PressKey(dp, Key.Enter);
+
+        var request = Assert.Single(_api.SaleRequests);
+        Assert.Equal([("CASH", 5000m), ("CREDIT", 8700m)], request.Payments.Select(p => (p.Method, p.Amount)));
+    }, customer: CreditCustomer);
+
+    [Fact]
+    public void Kredit_dp_above_the_grand_total_is_refused() => WithDialog(Cart13680(), (window, _) =>
+    {
+        SelectCredit(window);
+        var dp = Find<TextBox>(window, "BayarBox");
+        dp.Focus();
+        Type(dp, "20000");
+
+        PressKey(dp, Key.Enter);
+
+        Assert.Empty(_api.SaleRequests);
+        Assert.Equal("Uang muka tidak boleh melebihi Grand Total.", Find<TextBlock>(window, "ErrorText").Text);
+        Assert.True(window.IsVisible);
+        Assert.True(HasFocus(dp));
+    }, customer: CreditCustomer);
+
+    [Fact]
+    public void Kredit_dp_equal_to_the_grand_total_leaves_nothing_on_credit() => WithDialog(Cart13680(), (window, _) =>
+    {
+        SelectCredit(window);
+        var dp = Find<TextBox>(window, "BayarBox");
+        dp.Focus();
+        Type(dp, "13700");
+        Assert.Equal("0", Find<TextBox>(window, "ChangeBox").Text);
+
+        PressKey(dp, Key.Enter);
+
+        Assert.Equal([("CASH", 13700m)], Assert.Single(_api.SaleRequests).Payments.Select(p => (p.Method, p.Amount)));
+    }, customer: CreditCustomer);
+
+    [Fact]
+    public void Kredit_without_a_member_closes_and_asks_for_a_member() => WithDialog(Cart13680(), (window, vm) =>
+    {
+        SelectCredit(window);
+
+        PressKey(Find<TextBox>(window, "BayarBox"), Key.Enter);
+
+        Assert.Empty(_api.SaleRequests);
+        Assert.True(vm.MemberRequired);
+        Assert.False(vm.DialogResult);
+        Assert.False(window.IsVisible);
+        Assert.Contains("wajib memilih Member", vm.ErrorMessage);
+    });
+
+    [Fact]
+    public void F6_kredit_without_member_puts_focus_in_the_member_box() => OnSta(() =>
+    {
+        var session = new SessionState();
+        session.SetLogin(Samples.LoginWith("sale.create"));
+        _api.Catalog.Add(Samples.Amplop);
+        _dialogs.OnPayment = p =>
+        {
+            p.SelectedMethod = p.PaymentMethods.Single(m => m.IsCredit);
+            p.BayarEnterCommand.Execute(null);                 // what Enter in the dialog does (covered above)
+            return null;
+        };
+        var vm = new SalesViewModel(_api, session, _dialogs, new MemoryCartStore(), new MemoryViewSettingsStore(),
+            Receipts.Service(_api, _dialogs, _printer), (_, _) => Task.CompletedTask);
+        var view = new SalesView { DataContext = vm };
+        var window = Host(view);
+        try
+        {
+            var search = Find<TextBox>(view, "SearchBox");
+            search.Text = "13589";
+            PressKey(search, Key.Enter);
+
+            PressKey(search, Key.F6);
+
+            Assert.Empty(_api.SaleRequests);
+            Assert.True(HasFocus(Find<TextBox>(view, "MemberBox")));
+            Assert.Contains("wajib memilih Member", Find<TextBlock>(view, "StatusText").Text);
+            Assert.Single(Find<DataGrid>(view, "CartGrid").Items);                 // cart kept for the next F6
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    [Fact]
+    public void Credit_limit_warning_is_shown_after_saving_without_blocking() => OnSta(() =>
+    {
+        var warning = new SaleWarningInfo("credit_limit_exceeded", "Customer credit 13680 exceeds the limit 10000 by 3680.", 10000m, 13680m, 3680m);
+        const string expected = "Piutang pelanggan menjadi Rp 13.680, melebihi limit Rp 10.000 (lebih Rp 3.680). Penjualan tetap tersimpan.";
+        var result = new SaleResult(new SaleSummary(Guid.CreateVersion7(), "TK01-SL-202611-000050", 13680m, 0m, 0m, 13680m, 0m, 13680m),
+            [warning], false);
+
+        var dialog = ShowOffScreen(new SaleResultDialog { DataContext = new SaleResultViewModel(result) });
+        Assert.Equal(expected, Find<TextBlock>(dialog, "WarningText").Text);
+        Assert.Equal(Visibility.Visible, Find<TextBlock>(dialog, "WarningText").Visibility);
+        dialog.Close();
+
+        var session = new SessionState();
+        session.SetLogin(Samples.LoginWith("sale.create"));
+        _api.Catalog.Add(Samples.Amplop);
+        _dialogs.OnPayment = _ => result;
+        var vm = new SalesViewModel(_api, session, _dialogs, new MemoryCartStore(), new MemoryViewSettingsStore(),
+            Receipts.Service(_api, _dialogs, _printer), (_, _) => Task.CompletedTask);
+        var view = new SalesView { DataContext = vm };
+        var window = Host(view);
+        try
+        {
+            var search = Find<TextBox>(view, "SearchBox");
+            search.Text = "13589";
+            PressKey(search, Key.Enter);
+
+            PressKey(search, Key.F6);
+
+            Assert.Empty(Find<DataGrid>(view, "CartGrid").Items);                  // saved, not blocked
+            Assert.Equal(expected, Find<TextBlock>(view, "WarningText").Text);
+            Assert.Equal(Visibility.Visible, Find<TextBlock>(view, "WarningText").Visibility);
+        }
+        finally
+        {
+            window.Close();
+        }
     });
 
     [Fact]

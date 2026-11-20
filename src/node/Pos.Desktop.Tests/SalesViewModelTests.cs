@@ -736,7 +736,7 @@ public class SalesViewModelTests
 
         await vm.PayCommand.ExecuteAsync(null);
 
-        Assert.Equal("Kredit pelanggan melebihi limit.", vm.WarningMessage);
+        Assert.Equal("Kredit pelanggan melebihi limit. Penjualan tetap tersimpan.", vm.WarningMessage);
     }
 
     [Fact]
