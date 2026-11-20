@@ -288,30 +288,88 @@ public class PaymentUiTests
     }, customer: CreditCustomer);
 
     [Fact]
-    public void Kredit_without_a_member_closes_and_asks_for_a_member() => WithDialog(Cart13680(), (window, vm) =>
+    public void Choosing_kredit_without_a_member_opens_the_member_search_on_top_of_the_dialog() => OnSta(() =>
     {
-        SelectCredit(window);
+        CustomerItem? onForm = null;
+        var vm = new PaymentViewModel(_api, _dialogs, _api.Config, Cart13680(), null, Guid.CreateVersion7(), c => onForm = c);
+        var window = ShowOffScreen(new PaymentDialog { DataContext = vm });
+        try
+        {
+            _dialogs.CustomerToPick = CreditCustomer;
 
-        PressKey(Find<TextBox>(window, "BayarBox"), Key.Enter);
+            SelectCredit(window);
 
-        Assert.Empty(_api.SaleRequests);
-        Assert.True(vm.MemberRequired);
-        Assert.False(vm.DialogResult);
-        Assert.False(window.IsVisible);
-        Assert.Contains("wajib memilih Member", vm.ErrorMessage);
+            Assert.Contains("pick-customer:", _dialogs.Asked);
+            Assert.True(window.IsVisible);                                          // the dialog stays open
+            Assert.Equal("Member: C000001 - Budi Pelanggan", Find<TextBlock>(window, "MemberText").Text);
+            Assert.Equal(Visibility.Visible, Find<TextBlock>(window, "MemberText").Visibility);
+            Assert.Same(CreditCustomer, onForm);                                    // also set on the sales form
+            Assert.True(HasFocus(Find<TextBox>(window, "BayarBox")));               // Uang Muka, just press Enter
+            Assert.Equal(Visibility.Collapsed, Find<TextBlock>(window, "ErrorText").Visibility);
+
+            PressKey(Find<TextBox>(window, "BayarBox"), Key.Enter);
+
+            var request = Assert.Single(_api.SaleRequests);
+            Assert.Equal(CreditCustomer.Id, request.CustomerId);
+            Assert.Equal(("CREDIT", 13680m), (request.Payments[0].Method, request.Payments[0].Amount));
+        }
+        finally
+        {
+            window.Close();
+        }
     });
 
     [Fact]
-    public void F6_kredit_without_member_puts_focus_in_the_member_box() => OnSta(() =>
+    public void Cancelled_member_search_keeps_the_dialog_with_a_message_and_f4_opens_it_again() => WithDialog(Cart13680(), (window, vm) =>
+    {
+        _dialogs.CustomerToPick = null;
+        SelectCredit(window);
+
+        Assert.True(window.IsVisible);
+        Assert.Equal("Pilih member untuk KREDIT (F4).", Find<TextBlock>(window, "ErrorText").Text);
+        Assert.Equal(Visibility.Collapsed, Find<TextBlock>(window, "MemberText").Visibility);
+
+        // Enter without a member: the search opens again instead of saving
+        PressKey(Find<TextBox>(window, "BayarBox"), Key.Enter);
+        Assert.Empty(_api.SaleRequests);
+        Assert.Equal(2, _dialogs.Asked.Count(a => a.StartsWith("pick-customer", StringComparison.Ordinal)));
+        Assert.True(window.IsVisible);
+
+        _dialogs.CustomerToPick = CreditCustomer;
+        PressKey(Find<TextBox>(window, "BayarBox"), Key.F4);
+
+        Assert.Equal(3, _dialogs.Asked.Count(a => a.StartsWith("pick-customer", StringComparison.Ordinal)));
+        Assert.Equal("Member: C000001 - Budi Pelanggan", Find<TextBlock>(window, "MemberText").Text);
+        Assert.Equal(Visibility.Collapsed, Find<TextBlock>(window, "ErrorText").Visibility);
+        Assert.Empty(_api.SaleRequests);                                            // chosen, not yet saved
+
+        PressKey(Find<TextBox>(window, "BayarBox"), Key.Enter);
+        Assert.Equal(CreditCustomer.Id, Assert.Single(_api.SaleRequests).CustomerId);
+    });
+
+    [Fact]
+    public void F4_in_the_payment_dialog_works_for_every_method() => WithDialog(Cart13680(), (window, vm) =>
+    {
+        Assert.Contains(window.InputBindings.OfType<KeyBinding>(), b => b.Key == Key.F4 && ReferenceEquals(b.Command, vm.PickMemberCommand));
+        _dialogs.CustomerToPick = CreditCustomer;
+
+        PressKey(Find<TextBox>(window, "BayarBox"), Key.F4);                     // TUNAI
+
+        Assert.Equal("Member: C000001 - Budi Pelanggan", Find<TextBlock>(window, "MemberText").Text);
+        Assert.True(HasFocus(Find<TextBox>(window, "BayarBox")));
+    });
+
+    [Fact]
+    public void Member_chosen_in_the_payment_dialog_appears_on_the_sales_form() => OnSta(() =>
     {
         var session = new SessionState();
         session.SetLogin(Samples.LoginWith("sale.create"));
         _api.Catalog.Add(Samples.Amplop);
+        _dialogs.CustomerToPick = CreditCustomer;
         _dialogs.OnPayment = p =>
         {
-            p.SelectedMethod = p.PaymentMethods.Single(m => m.IsCredit);
-            p.BayarEnterCommand.Execute(null);                 // what Enter in the dialog does (covered above)
-            return null;
+            p.SelectedMethod = p.PaymentMethods.Single(m => m.IsCredit);      // opens the member search (fake picks Budi)
+            return null;                                                       // cashier closes the dialog
         };
         var vm = new SalesViewModel(_api, session, _dialogs, new MemoryCartStore(), new MemoryViewSettingsStore(),
             Receipts.Service(_api, _dialogs, _printer), (_, _) => Task.CompletedTask);
@@ -324,17 +382,55 @@ public class PaymentUiTests
             PressKey(search, Key.Enter);
 
             PressKey(search, Key.F6);
+            var firstSaleId = _dialogs.Payments[0].SaleId;
 
-            Assert.Empty(_api.SaleRequests);
-            Assert.True(HasFocus(Find<TextBox>(view, "MemberBox")));
-            Assert.Contains("wajib memilih Member", Find<TextBlock>(view, "StatusText").Text);
-            Assert.Single(Find<DataGrid>(view, "CartGrid").Items);                 // cart kept for the next F6
+            Assert.Equal("C000001 - Budi Pelanggan", Find<TextBox>(view, "MemberBox").Text);
+            Assert.Same(CreditCustomer, vm.Customer);
+            Assert.Single(Find<DataGrid>(view, "CartGrid").Items);
+
+            PressKey(search, Key.F6);                                          // same cart → same sale id
+            Assert.Equal(firstSaleId, _dialogs.Payments[1].SaleId);
         }
         finally
         {
             window.Close();
         }
     });
+
+    [Fact]
+    public void No_label_is_cut_off_for_any_payment_method() => WithDialog(Cart13680(), (window, vm) =>
+    {
+        foreach (var method in _api.Config.PaymentMethods)
+        {
+            _dialogs.CustomerToPick = CreditCustomer;
+            Find<ComboBox>(window, "MethodBox").SelectedItem = method;
+            DoEvents();
+            window.UpdateLayout();
+
+            var labels = VisualTreeSearchLabels(window).ToList();
+            Assert.Contains(labels, l => l.Text == (method.IsCredit ? "Uang Muka (DP)" : "Bayar"));
+            foreach (var label in labels)
+            {
+                // Desired width without limits (text + margin) must fit the slot the grid column gives the label.
+                // ActualWidth alone cannot show clipping: WPF keeps the full width and clips the drawing.
+                label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                var needed = label.DesiredSize.Width;
+                label.InvalidateMeasure();
+                window.UpdateLayout();
+                var slot = System.Windows.Controls.Primitives.LayoutInformation.GetLayoutSlot(label).Width;
+                Assert.True(slot >= needed - 0.5, $"{method.Name}: '{label.Text}' needs {needed:0.0} px, slot is {slot:0.0} px");
+                Assert.True(label.ActualWidth >= label.DesiredSize.Width - label.Margin.Left - label.Margin.Right - 0.5);
+                Assert.Null(System.Windows.Controls.Primitives.LayoutInformation.GetLayoutClip(label));
+            }
+        }
+        var discountMode = Find<ComboBox>(window, "DiscountModeBox");
+        Assert.True(discountMode.ActualWidth >= 90, $"Potongan/Diskon box is {discountMode.ActualWidth} px");
+    });
+
+    /// <summary>Label text blocks of the form grid (column 0).</summary>
+    private static IEnumerable<TextBlock> VisualTreeSearchLabels(Window window) =>
+        Pos.Desktop.Infrastructure.VisualTreeSearch.Descendants<TextBlock>(window)
+            .Where(t => Grid.GetColumn(t) == 0 && t.Parent is Grid && !string.IsNullOrEmpty(t.Text));
 
     [Fact]
     public void Credit_limit_warning_is_shown_after_saving_without_blocking() => OnSta(() =>

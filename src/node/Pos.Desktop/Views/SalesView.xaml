@@ -12,6 +12,7 @@
         <KeyBinding Key="F1" Command="{Binding OpenProductSearchCommand}" />
         <!-- F3 is new (not in RMS 2): hide/show the Data panel. -->
         <KeyBinding Key="F3" Command="{Binding ToggleDataPanelCommand}" />
+        <KeyBinding Key="F4" Command="{Binding PickCustomerCommand}" />
         <KeyBinding Key="F5" Command="{Binding ReprintCommand}" />
         <KeyBinding Key="F6" Command="{Binding PayCommand}" />
         <KeyBinding Key="F8" Command="{Binding ChangeQtyCommand}" />
@@ -137,22 +138,46 @@
 
         <!-- Right: Member, Cari [F1] ... x [qty], then Transaksi -->
         <DockPanel x:Name="RightPanel" Grid.Row="1" Grid.Column="2">
-            <DockPanel x:Name="MemberRow" DockPanel.Dock="Top" Margin="0,0,0,6">
-                <TextBlock Text="Member" VerticalAlignment="Center" Width="60" />
-                <Button x:Name="PickCustomerButton" DockPanel.Dock="Right" Content="..." MinWidth="0" Padding="6,0"
-                        Command="{Binding PickCustomerCommand}" />
-                <TextBox x:Name="MemberBox" Text="{Binding CustomerText, UpdateSourceTrigger=PropertyChanged}" Padding="2"
+            <!-- Member [F4] and Cari [F1] share one grid: same label column, text boxes aligned left and right,
+                 "..." exactly above the "x" qty box. -->
+            <Grid x:Name="SearchArea" DockPanel.Dock="Top" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="56" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="6" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Name="MemberLabel" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,6,0">
+                    <Hyperlink Command="{Binding PickCustomerCommand}">Member [F4]</Hyperlink>
+                </TextBlock>
+                <TextBox x:Name="MemberBox" Grid.Row="0" Grid.Column="1" Padding="2"
+                         Text="{Binding CustomerText, UpdateSourceTrigger=PropertyChanged}"
                          infra:FocusBehavior.Key="member">
                     <TextBox.InputBindings>
                         <KeyBinding Key="Enter" Command="{Binding MemberEnterCommand}" />
                     </TextBox.InputBindings>
                 </TextBox>
-            </DockPanel>
-            <DockPanel x:Name="SearchRow" DockPanel.Dock="Top" Margin="0,0,0,8">
-                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,6,0">
+                <Button x:Name="PickCustomerButton" Grid.Row="0" Grid.Column="3" Content="..." MinWidth="0" Padding="0"
+                        Command="{Binding PickCustomerCommand}" />
+
+                <TextBlock x:Name="SearchLabel" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,6,0">
                     <Hyperlink Command="{Binding OpenProductSearchCommand}">Cari [F1]</Hyperlink>
                 </TextBlock>
-                <TextBox x:Name="QtyBox" DockPanel.Dock="Right" Width="56" Padding="2" TextAlignment="Left"
+                <TextBox x:Name="SearchBox" Grid.Row="2" Grid.Column="1" Padding="2" infra:FocusBehavior.Key="search"
+                         infra:SearchNavigation.Results="{Binding ElementName=ProductGrid}"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding SearchEnterCommand}" />
+                    </TextBox.InputBindings>
+                </TextBox>
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="x" VerticalAlignment="Center" Margin="6,0" />
+                <TextBox x:Name="QtyBox" Grid.Row="2" Grid.Column="3" Padding="2" TextAlignment="Left"
                          infra:FocusBehavior.Key="qty"
                          Text="{Binding QtyText, UpdateSourceTrigger=PropertyChanged}">
                     <TextBox.Style>
@@ -168,15 +193,7 @@
                         <KeyBinding Key="Enter" Command="{Binding QtyEnterCommand}" />
                     </TextBox.InputBindings>
                 </TextBox>
-                <TextBlock DockPanel.Dock="Right" Text="x" VerticalAlignment="Center" Margin="6,0" />
-                <TextBox x:Name="SearchBox" Padding="2" infra:FocusBehavior.Key="search"
-                         infra:SearchNavigation.Results="{Binding ElementName=ProductGrid}"
-                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}">
-                    <TextBox.InputBindings>
-                        <KeyBinding Key="Enter" Command="{Binding SearchEnterCommand}" />
-                    </TextBox.InputBindings>
-                </TextBox>
-            </DockPanel>
+            </Grid>
 
             <GroupBox x:Name="TransactionGroup" Header="Transaksi">
                 <DockPanel>

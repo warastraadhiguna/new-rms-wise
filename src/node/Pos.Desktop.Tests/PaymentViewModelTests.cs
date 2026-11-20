@@ -176,16 +176,16 @@ public class PaymentViewModelTests
     }
 
     [Fact]
-    public async Task Credit_needs_a_member()
+    public async Task Credit_without_a_member_asks_for_one_and_never_closes_the_dialog()
     {
         var vm = Vm();
-        vm.SelectedMethod = Method(vm, "CREDIT");
+        vm.SelectedMethod = Method(vm, "CREDIT");                 // search opens, cancelled
 
-        await vm.SaveCommand.ExecuteAsync(null);
+        await vm.SaveCommand.ExecuteAsync(null);                  // opens again, cancelled again
 
-        Assert.Equal("Pembayaran KREDIT wajib memilih Member. Pilih Member, lalu tekan Bayar [F6] lagi.", vm.ErrorMessage);
-        Assert.True(vm.MemberRequired);
-        Assert.False(vm.DialogResult);
+        Assert.Equal(2, _dialogs.Asked.Count(a => a.StartsWith("pick-customer", StringComparison.Ordinal)));
+        Assert.Equal(PaymentViewModel.MemberNeededMessage, vm.ErrorMessage);
+        Assert.Null(vm.DialogResult);
         Assert.Empty(_api.SaleRequests);
     }
 

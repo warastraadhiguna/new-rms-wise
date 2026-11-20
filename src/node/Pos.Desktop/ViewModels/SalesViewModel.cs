@@ -446,15 +446,17 @@ public sealed partial class SalesViewModel : ObservableObject
             SaveCart();
         }
 
-        var payment = new PaymentViewModel(_api, _dialogs, config, _cart, Customer, _pendingSaleId.Value);
+        var payment = new PaymentViewModel(_api, _dialogs, config, _cart, Customer, _pendingSaleId.Value,
+            onCustomerPicked: picked =>
+            {
+                // Member chosen inside the payment dialog: show it on the form too, but keep the dialog's sale id
+                // (a retry after a network failure must reuse it).
+                var saleId = _pendingSaleId;
+                Customer = picked;
+                _pendingSaleId = saleId;
+                SaveCart();
+            });
         var result = _dialogs.ShowPayment(payment);
-        if (result is null && payment.MemberRequired)
-        {
-            // KREDIT without a Member: say so and put the cashier in the Member box (F6 again afterwards).
-            StatusMessage = payment.ErrorMessage;
-            RequestFocus("member");
-            return;
-        }
         if (result is null)
         {
             RequestFocus("search");

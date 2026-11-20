@@ -23,18 +23,23 @@ public sealed partial class PaymentViewModel : DialogViewModel
     private readonly IDialogService _dialogs;
     private readonly SalesConfig _config;
     private readonly Cart _cart;
-    private readonly CustomerItem? _customer;
+    private readonly Action<CustomerItem>? _onCustomerPicked;
+    private CustomerItem? _customer;
     private int _focusSequence;
     private bool _bayarEdited;
     private bool _recalculating;
 
-    public PaymentViewModel(INodeApi api, IDialogService dialogs, SalesConfig config, Cart cart, CustomerItem? customer, Guid saleId)
+    /// <param name="onCustomerPicked">A member chosen inside this dialog (F4 / KREDIT) is also set on the sales form.</param>
+    public PaymentViewModel(
+        INodeApi api, IDialogService dialogs, SalesConfig config, Cart cart, CustomerItem? customer, Guid saleId,
+        Action<CustomerItem>? onCustomerPicked = null)
     {
         _api = api;
         _dialogs = dialogs;
         _config = config;
         _cart = cart;
         _customer = customer;
+        _onCustomerPicked = onCustomerPicked;
         SaleId = saleId;
         Total = cart.Total;
         _selectedMethod = config.PaymentMethods.FirstOrDefault(m => m.IsCash) ?? config.PaymentMethods.FirstOrDefault();
@@ -94,6 +99,31 @@ public sealed partial class PaymentViewModel : DialogViewModel
         OnPropertyChanged(nameof(BayarLabel));
         OnPropertyChanged(nameof(ChangeLabel));
         Recalculate();
+        if (IsCredit && _customer is null)
+            PickMember();
+    }
+
+    /// <summary>
+    /// F4 in the dialog, choosing KREDIT without a member, or saving KREDIT without one: the member search opens on top
+    /// of this dialog. Chosen → shown here, set on the sales form, focus on Uang Muka. Cancelled → stay with a message.
+    /// </summary>
+    [RelayCommand]
+    private void PickMember()
+    {
+        var picked = _dialogs.PickCustomer("");
+        if (picked is null)
+        {
+            if (_customer is null && IsCredit)
+                ErrorMessage = MemberNeededMessage;
+            Focus("bayar");
+            return;
+        }
+
+        _customer = picked;
+        OnPropertyChanged(nameof(CustomerName));
+        _onCustomerPicked?.Invoke(picked);
+        ErrorMessage = null;
+        Focus("bayar");
     }
 
     partial void OnIsNominalDiscountChanged(bool value)
@@ -120,8 +150,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
 
     public string ChangeLabel => IsCredit ? "Sisa Piutang" : "Kembali";
 
-    /// <summary>KREDIT was saved without a Member: the dialog closed so the cashier can choose one in the form.</summary>
-    public bool MemberRequired { get; private set; }
+    public const string MemberNeededMessage = "Pilih member untuk KREDIT (F4).";
 
     private CashRoundingSettings Rounding => new(_config.CashRoundingStep, CashRoundingModes.Parse(_config.CashRoundingMode));
 
@@ -320,9 +349,8 @@ public sealed partial class PaymentViewModel : DialogViewModel
     {
         if (_customer is null)
         {
-            ErrorMessage = "Pembayaran KREDIT wajib memilih Member. Pilih Member, lalu tekan Bayar [F6] lagi.";
-            MemberRequired = true;
-            DialogResult = false;
+            // Owner revision: stay in the dialog and open the member search; after choosing, the cashier presses Enter.
+            PickMember();
             return null;
         }
         if (ReadDownPayment() is not { } dp)

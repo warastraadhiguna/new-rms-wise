@@ -261,6 +261,57 @@ public class SalesViewUiTests
     }
 
     [Fact]
+    public void Member_and_cari_boxes_line_up_left_and_right_and_the_dots_sit_above_the_qty_box() => WithForm((view, _) =>
+    {
+        view.UpdateLayout();
+        var member = Find<TextBox>(view, "MemberBox");
+        var search = Find<TextBox>(view, "SearchBox");
+        var dots = Find<Button>(view, "PickCustomerButton");
+        var qty = Find<TextBox>(view, "QtyBox");
+        var memberLabel = Find<TextBlock>(view, "MemberLabel");
+        var searchLabel = Find<TextBlock>(view, "SearchLabel");
+
+        Assert.Equal(At(view, member).X, At(view, search).X, precision: 1);                                   // left edges
+        Assert.Equal(At(view, member).X + member.ActualWidth, At(view, search).X + search.ActualWidth, precision: 1); // right edges
+        Assert.Equal(At(view, dots).X, At(view, qty).X, precision: 1);
+        Assert.Equal(At(view, dots).X + dots.ActualWidth, At(view, qty).X + qty.ActualWidth, precision: 1);
+        Assert.Equal(memberLabel.ActualWidth, searchLabel.ActualWidth, precision: 1);                         // same label column
+        Assert.Equal(At(view, memberLabel).X, At(view, searchLabel).X, precision: 1);
+        Assert.True(At(view, member).Y < At(view, search).Y);
+        Assert.Equal("Member [F4]", memberLabel.Inlines.OfType<System.Windows.Documents.Hyperlink>().Single()
+            .Inlines.OfType<System.Windows.Documents.Run>().Single().Text);
+        Assert.Equal("Cari [F1]", searchLabel.Inlines.OfType<System.Windows.Documents.Hyperlink>().Single()
+            .Inlines.OfType<System.Windows.Documents.Run>().Single().Text);
+    });
+
+    [Fact]
+    public void F4_opens_the_member_search_and_returns_to_cari() => WithForm((view, vm) =>
+    {
+        var budi = new CustomerItem(Guid.CreateVersion7(), "C000001", "Budi Pelanggan", null, 500000m, 0m, 500000m, 14, 0);
+        _dialogs.CustomerToPick = budi;
+        Assert.Contains(view.InputBindings.OfType<KeyBinding>(), b => b.Key == Key.F4 && ReferenceEquals(b.Command, vm.PickCustomerCommand));
+
+        PressKey(Find<TextBox>(view, "SearchBox"), Key.F4);
+
+        Assert.Contains(_dialogs.Asked, a => a.StartsWith("pick-customer", StringComparison.Ordinal));
+        Assert.Same(budi, vm.Customer);
+        Assert.Equal("C000001 - Budi Pelanggan", Find<TextBox>(view, "MemberBox").Text);
+        Assert.True(HasFocus(Find<TextBox>(view, "SearchBox")));
+    });
+
+    [Fact]
+    public void F4_cancelled_also_returns_to_cari() => WithForm((view, vm) =>
+    {
+        _dialogs.CustomerToPick = null;
+        Find<TextBox>(view, "MemberBox").Focus();
+
+        PressKey(Find<TextBox>(view, "MemberBox"), Key.F4);
+
+        Assert.Null(vm.Customer);
+        Assert.True(HasFocus(Find<TextBox>(view, "SearchBox")));
+    });
+
+    [Fact]
     public void Member_and_cari_sit_above_the_total_on_the_right_and_the_left_panel_holds_only_the_grid() => WithForm((view, _) =>
     {
         view.UpdateLayout();
