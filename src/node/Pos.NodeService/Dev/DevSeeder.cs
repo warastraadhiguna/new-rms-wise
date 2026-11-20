@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.Extensions.Logging.Abstractions;
 using MySqlConnector;
+using Pos.NodeService.Auth;
 using Pos.NodeService.Data;
 using Pos.NodeService.Documents;
 using Pos.NodeService.Nodes;
@@ -11,6 +12,14 @@ using Pos.Shared.Stock;
 using Pos.Shared.Sync;
 
 namespace Pos.NodeService.Dev;
+
+/// <summary>DEVELOPMENT ONLY logins created by the dev seed. Never use these outside a *_dev database.</summary>
+public static class DevCredentials
+{
+    public const string AdminPassword = "admin123";
+    public const string CashierPassword = "kasir123";
+    public const string CashierPin = "123456";
+}
 
 public sealed record DevProduct(string Sku, Guid ProductId, Guid ProductUnitId, string Barcode, decimal Price, bool TrackExpiry);
 
@@ -47,6 +56,7 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
 
             if (exists)
             {
+                await UpgradeDevAuthAsync(connection, tx, ct);
                 _logger.LogInformation("Dev seed skipped: node {Node} already exists.", nodeCode);
                 return await LoadAsync(connection, tx, nodeCode, created: false, ct);
             }
@@ -77,15 +87,23 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
         var cashierRole = Id(); var adminRole = Id(); var admin = Id(); var cashier = Id();
         await Exec(
             """
-            INSERT INTO roles (id, code, name) VALUES (@cashierRole, 'CASHIER', 'Kasir'), (@adminRole, 'STORE_ADMIN', 'Admin toko')
-            """, new { cashierRole, adminRole });
-        // DEV ONLY: no usable password until authentication is implemented.
+            INSERT INTO roles (id, code, name, permissions) VALUES
+              (@cashierRole, 'CASHIER', 'Kasir', @CashierPermissions),
+              (@adminRole, 'STORE_ADMIN', 'Admin toko', @AdminPermissions)
+            """, new { cashierRole, adminRole, CashierPermissions, AdminPermissions });
+        // DEV ONLY credentials, see DevCredentials.
         await Exec(
             """
-            INSERT INTO users (id, username, password_hash, full_name) VALUES
-              (@admin, 'admin', '!dev-no-login', 'Admin Dev'),
-              (@cashier, 'kasir1', '!dev-no-login', 'Kasir Satu')
-            """, new { admin, cashier });
+            INSERT INTO users (id, username, password_hash, pin_hash, full_name) VALUES
+              (@admin, 'admin', @adminHash, NULL, 'Admin Dev'),
+              (@cashier, 'kasir1', @cashierHash, @cashierPin, 'Kasir Satu')
+            """, new
+            {
+                admin, cashier,
+                adminHash = PasswordHasher.Hash(DevCredentials.AdminPassword),
+                cashierHash = PasswordHasher.Hash(DevCredentials.CashierPassword),
+                cashierPin = PasswordHasher.Hash(DevCredentials.CashierPin),
+            });
         await Exec(
             """
             INSERT INTO user_roles (id, user_id, role_id, node_id) VALUES (@a, @admin, @adminRole, @node), (@b, @cashier, @cashierRole, @node)
@@ -173,6 +191,30 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
               (@s4, NULL, 'returns.window_days', '7')
             """, new { s1 = Id(), s2 = Id(), s3 = Id(), s4 = Id() });
         await Exec("INSERT INTO reasons (id, type, name) VALUES (@id, 'ADJUSTMENT', 'Saldo awal (OPENING)')", new { id = Id() });
+    }
+
+    private const string CashierPermissions = """["shift.open","shift.close","sale.create"]""";
+    private const string AdminPermissions = """["*"]""";
+
+    /// <summary>
+    /// Databases seeded before authentication existed: give the dev users real bcrypt hashes and the
+    /// dev roles their permissions. Only touches the placeholder values, so it is safe to repeat.
+    /// </summary>
+    private async Task UpgradeDevAuthAsync(MySqlConnection c, MySqlTransaction tx, CancellationToken ct)
+    {
+        Task<int> Exec(string sql, object args) => c.ExecuteAsync(new CommandDefinition(sql, args, tx, cancellationToken: ct));
+
+        var users =
+            await Exec("UPDATE users SET password_hash = @hash WHERE username = 'admin' AND password_hash = '!dev-no-login'",
+                new { hash = PasswordHasher.Hash(DevCredentials.AdminPassword) })
+            + await Exec("UPDATE users SET password_hash = @hash, pin_hash = @pin WHERE username = 'kasir1' AND password_hash = '!dev-no-login'",
+                new { hash = PasswordHasher.Hash(DevCredentials.CashierPassword), pin = PasswordHasher.Hash(DevCredentials.CashierPin) });
+        var roles =
+            await Exec("UPDATE roles SET permissions = @CashierPermissions WHERE code = 'CASHIER' AND permissions IS NULL", new { CashierPermissions })
+            + await Exec("UPDATE roles SET permissions = @AdminPermissions WHERE code = 'STORE_ADMIN' AND permissions IS NULL", new { AdminPermissions });
+
+        if (users + roles > 0)
+            _logger.LogInformation("Dev seed: set credentials for {Users} user(s) and permissions for {Roles} role(s).", users, roles);
     }
 
     private static async Task<DevSeedResult> LoadAsync(MySqlConnection c, MySqlTransaction tx, string nodeCode, bool created, CancellationToken ct)

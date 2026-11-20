@@ -26,7 +26,10 @@ namespace Pos.NodeService.Sales;
 /// </summary>
 public sealed class SaleService(TransactionRunner runner, NodeIdentity nodeIdentity, TimeProvider clock, SaleHooks? hooks = null)
 {
-    public async Task<CreateSaleResult> CreateAsync(CreateSaleRequest request, CancellationToken cancellationToken = default)
+    /// <param name="deviceId">The device the request came from (header X-Device-Id).</param>
+    /// <param name="userId">The logged-in cashier; stored as <c>created_by</c>.</param>
+    public async Task<CreateSaleResult> CreateAsync(
+        CreateSaleRequest request, Guid deviceId, Guid userId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.Id.Version != 7)
@@ -42,7 +45,8 @@ public sealed class SaleService(TransactionRunner runner, NodeIdentity nodeIdent
 
         try
         {
-            return await runner.RunAsync((c, tx, ct) => CreateWithinAsync(c, tx, node, request, ct), "Create sale", cancellationToken);
+            return await runner.RunAsync((c, tx, ct) => CreateWithinAsync(c, tx, node, request, deviceId, userId, ct),
+                "Create sale", cancellationToken);
         }
         catch (MySqlException ex) when (ex.ErrorCode == MySqlErrorCode.DuplicateKeyEntry)
         {
@@ -61,18 +65,17 @@ public sealed class SaleService(TransactionRunner runner, NodeIdentity nodeIdent
     }
 
     private async Task<CreateSaleResult> CreateWithinAsync(
-        MySqlConnection c, MySqlTransaction tx, NodeInfo node, CreateSaleRequest request, CancellationToken ct)
+        MySqlConnection c, MySqlTransaction tx, NodeInfo node, CreateSaleRequest request, Guid deviceId, Guid userId,
+        CancellationToken ct)
     {
         var lines = request.Lines!;
         var payments = request.Payments ?? [];
 
         // Shared lock: a shift close (FOR UPDATE) waits until this sale commits.
-        var shift = await c.QuerySingleOrDefaultAsync<(Guid Id, Guid CashierId)?>(new CommandDefinition(
-            "SELECT id, cashier_id FROM cashier_shifts WHERE device_id = @DeviceId AND node_id = @nodeId AND status = @open FOR SHARE",
-            new { request.DeviceId, nodeId = node.Id, open = ShiftStatus.Open }, tx, cancellationToken: ct))
-            ?? throw ApiException.Conflict("no_open_shift", $"Device {request.DeviceId} has no open shift.");
-        if (request.CashierId is { } cashierId && cashierId != shift.CashierId)
-            throw ApiException.Unprocessable("cashier_mismatch", "The cashier is not the one who opened this shift.");
+        var shiftId = await c.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
+            "SELECT id FROM cashier_shifts WHERE device_id = @deviceId AND node_id = @nodeId AND status = @open FOR SHARE",
+            new { deviceId, nodeId = node.Id, open = ShiftStatus.Open }, tx, cancellationToken: ct))
+            ?? throw ApiException.Conflict("no_open_shift", $"Device {deviceId} has no open shift.");
 
         var customer = request.CustomerId is { } customerId
             ? await c.QuerySingleOrDefaultAsync<CustomerRow>(new CommandDefinition(
@@ -134,9 +137,9 @@ public sealed class SaleService(TransactionRunner runner, NodeIdentity nodeIdent
             """,
             new
             {
-                saleId, nodeId = node.Id, number, shiftId = shift.Id, request.CustomerId, soldAt,
+                saleId, nodeId = node.Id, number, shiftId, request.CustomerId, soldAt,
                 totals.Subtotal, totals.RoundingAmount, totals.Total, totals.CreditAmount, dueDate, request.Notes,
-                createdBy = shift.CashierId,
+                createdBy = userId,
             }, tx, cancellationToken: ct));
 
         await c.ExecuteAsync(new CommandDefinition(

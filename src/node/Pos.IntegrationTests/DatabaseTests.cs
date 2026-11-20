@@ -13,6 +13,7 @@ public class DatabaseTests(DatabaseFixture db)
         // the fixture dropped every table, then migrated
         Assert.True(db.Migration.Successful);
         Assert.Contains("0001_initial_schema.sql", db.Migration.ScriptsApplied);
+        Assert.Contains("0002_login_throttle.sql", db.Migration.ScriptsApplied);
 
         await using var connection = await db.Factory.OpenAsync();
         var tables = (await connection.QueryAsync<string>(
@@ -31,7 +32,7 @@ public class DatabaseTests(DatabaseFixture db)
 
         Assert.True(outcome.Successful);
         Assert.Empty(outcome.ScriptsApplied);
-        Assert.Equal("0001_initial_schema.sql", migrator.GetAppliedScripts().Order().Last());
+        Assert.Equal("0002_login_throttle.sql", migrator.GetAppliedScripts().Order().Last());
     }
 
     [DatabaseFact]

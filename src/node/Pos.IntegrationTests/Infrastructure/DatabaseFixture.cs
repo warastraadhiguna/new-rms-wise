@@ -1,6 +1,8 @@
 using Dapper;
+using Pos.NodeService.Auth;
 using Pos.NodeService.Data;
 using Pos.NodeService.Dev;
+using Pos.Shared.Auth;
 
 namespace Pos.IntegrationTests.Infrastructure;
 
@@ -27,6 +29,13 @@ public sealed class DatabaseFixture : IAsyncLifetime
 
     public static string MigrationsPath => Path.Combine(AppContext.BaseDirectory, "migrations");
 
+    /// <summary>Node signing key for this test run (temporary file, deleted afterwards).</summary>
+    public string KeyPath { get; } = Path.Combine(Path.GetTempPath(), "pos-test-keys", Guid.NewGuid().ToString("N"), "jwt-signing.key");
+
+    public TokenService Tokens { get; private set; } = null!;
+
+    public static readonly string[] CashierPermissions = [Permissions.ShiftOpen, Permissions.ShiftClose, Permissions.SaleCreate];
+
     public async Task InitializeAsync()
     {
         if (!TestDatabase.IsConfigured)
@@ -34,6 +43,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
 
         ConnectionString = TestDatabase.ConnectionString!;
         Factory = new DbConnectionFactory(ConnectionString);
+        Tokens = new TokenService(SigningKeyStore.LoadOrCreate(KeyPath), "TK01", TimeSpan.FromHours(12));
 
         await DropAllTablesAsync();
         Migration = new DatabaseMigrator(ConnectionString, MigrationsPath).Migrate();
@@ -43,7 +53,65 @@ public sealed class DatabaseFixture : IAsyncLifetime
         Seed = await new DevSeeder(new TransactionRunner(Factory), TimeProvider.System).SeedAsync("TK01");
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public Task DisposeAsync()
+    {
+        try
+        {
+            Directory.Delete(Path.GetDirectoryName(KeyPath)!, recursive: true);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Token for a user without going through login (tests that are not about authentication).</summary>
+    public string TokenFor(Guid userId, string username = "test", IEnumerable<string>? permissions = null, DateTime? now = null) =>
+        Tokens.Issue(userId, username, permissions ?? CashierPermissions, now ?? DateTime.UtcNow).Token;
+
+    /// <summary>The seeded cashier (kasir1) with cashier permissions.</summary>
+    public string CashierToken() => TokenFor(Seed.CashierId, "kasir1");
+
+    /// <summary>
+    /// A user with bcrypt hashes (low work factor for speed). Each role is (permissions JSON, node id or null = all nodes).
+    /// </summary>
+    public async Task<Guid> CreateUserAsync(
+        string username, string password, string? pin = null, bool isActive = true, bool deleted = false,
+        params (string PermissionsJson, Guid? NodeId)[] roles)
+    {
+        var userId = Guid.CreateVersion7();
+        await using var connection = await Factory.OpenAsync();
+        await connection.ExecuteAsync(
+            """
+            INSERT INTO users (id, username, password_hash, pin_hash, full_name, is_active, deleted_at)
+            VALUES (@userId, @username, @passwordHash, @pinHash, 'Test user', @isActive, @deletedAt)
+            """,
+            new
+            {
+                userId, username, passwordHash = PasswordHasher.Hash(password, workFactor: 4),
+                pinHash = pin is null ? null : PasswordHasher.Hash(pin, workFactor: 4),
+                isActive, deletedAt = deleted ? DateTime.UtcNow : (DateTime?)null,
+            });
+
+        foreach (var (permissionsJson, nodeId) in roles)
+        {
+            var roleId = Guid.CreateVersion7();
+            await connection.ExecuteAsync("INSERT INTO roles (id, code, name, permissions) VALUES (@roleId, @code, 'Test role', @permissionsJson)",
+                new { roleId, code = "R" + roleId.ToString("N")[..20], permissionsJson });
+            await connection.ExecuteAsync("INSERT INTO user_roles (id, user_id, role_id, node_id) VALUES (@id, @userId, @roleId, @nodeId)",
+                new { id = Guid.CreateVersion7(), userId, roleId, nodeId });
+        }
+        return userId;
+    }
+
+    /// <summary>Another node of the same branch (for "no rights at this node" cases).</summary>
+    public async Task<Guid> CreateOtherNodeAsync()
+    {
+        var id = Guid.CreateVersion7();
+        await using var connection = await Factory.OpenAsync();
+        await connection.ExecuteAsync("INSERT INTO nodes (id, branch_id, code, name, type) VALUES (@id, @BranchId, @code, 'Other', 'STORE')",
+            new { id, BranchId, code = "X" + Random.Shared.Next(100, 999) });
+        return id;
+    }
 
     public async Task<Guid> CreateProductAsync(bool trackExpiry)
     {

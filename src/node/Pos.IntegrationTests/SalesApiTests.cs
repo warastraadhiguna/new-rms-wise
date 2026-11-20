@@ -41,8 +41,7 @@ public class SalesApiTests(DatabaseFixture db) : IAsyncLifetime
     private async Task<(Guid Device, Guid Shift)> OpenShiftAsync(decimal openingCash = 100000m)
     {
         var device = await db.CreateDeviceAsync();
-        var (status, body) = await _client.PostAsync("/api/v1/shifts/open",
-            new { CashierId = db.Seed.CashierId, DeviceId = device, OpeningCash = openingCash });
+        var (status, body) = await _client.PostAsync("/api/v1/shifts/open", new { OpeningCash = openingCash }, db.CashierToken(), device);
         Assert.Equal(HttpStatusCode.Created, status);
         return (device, body.Id());
     }
@@ -57,11 +56,10 @@ public class SalesApiTests(DatabaseFixture db) : IAsyncLifetime
         _client.PostAsync("/api/v1/sales", new
         {
             Id = id ?? Guid.CreateVersion7(),
-            DeviceId = device,
             CustomerId = customer,
             Lines = lines,
             Payments = payments,
-        });
+        }, db.CashierToken(), device);
 
     private async Task<T> ScalarAsync<T>(string sql, object args)
     {
@@ -305,7 +303,7 @@ public class SalesApiTests(DatabaseFixture db) : IAsyncLifetime
         await Sell(device, [Line(product, 3m)], [Pay("CASH", 20000m)]);    // total 13700, change 6300
         await Sell(device, [Line(product, 1m)], [Pay("QRIS", 4560m)]);     // not cash
 
-        var (_, closed) = await _client.PostAsync("/api/v1/shifts/close", new { ShiftId = shift, CountedCash = 113700m });
+        var (_, closed) = await _client.PostAsync("/api/v1/shifts/close", new { ShiftId = shift, CountedCash = 113700m }, db.CashierToken(), device);
 
         Assert.Equal(113700m, closed.Dec("expected_cash"));
         Assert.Equal(0m, closed.Dec("difference"));
@@ -325,9 +323,10 @@ public class SalesApiTests(DatabaseFixture db) : IAsyncLifetime
         var id = Guid.CreateVersion7();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => failing.CreateAsync(new CreateSaleRequest(
-            id, device, null, null, null,
-            [new SaleLineRequest(product.ProductUnitId, null, 2m)],
-            [new SalePaymentRequest("CASH", 10000m)])));
+                id, null, null,
+                [new SaleLineRequest(product.ProductUnitId, null, 2m)],
+                [new SalePaymentRequest("CASH", 10000m)]),
+            device, db.Seed.CashierId));
 
         Assert.Equal(0, await ScalarAsync<int>("SELECT COUNT(*) FROM sales WHERE id = @id", new { id }));
         Assert.Equal(0, await ScalarAsync<int>("SELECT COUNT(*) FROM sale_lines WHERE sale_id = @id", new { id }));

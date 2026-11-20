@@ -1,12 +1,10 @@
 namespace Pos.NodeService.Sales;
 
+/// <summary>The cashier comes from the access token and the device from header X-Device-Id.</summary>
 /// <param name="Id">UUID v7 created by the client; sending the same id again returns the stored sale.</param>
-/// <param name="CashierId">Optional until authentication exists; must match the shift's cashier when given.</param>
 /// <param name="LocationId">Optional; defaults to the node's single sellable location.</param>
 public sealed record CreateSaleRequest(
     Guid Id,
-    Guid DeviceId,
-    Guid? CashierId,
     Guid? CustomerId,
     Guid? LocationId,
     IReadOnlyList<SaleLineRequest>? Lines,

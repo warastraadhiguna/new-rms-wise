@@ -28,8 +28,11 @@ public class ShiftApiTests(DatabaseFixture db) : IAsyncLifetime
             await _factory.DisposeAsync();
     }
 
-    private Task<(HttpStatusCode Status, System.Text.Json.JsonElement Body)> Open(Guid device, decimal openingCash = 200000m, Guid? cashier = null) =>
-        _client.PostAsync("/api/v1/shifts/open", new { CashierId = cashier ?? db.Seed.CashierId, DeviceId = device, OpeningCash = openingCash });
+    private Task<(HttpStatusCode Status, System.Text.Json.JsonElement Body)> Open(Guid device, decimal openingCash = 200000m) =>
+        _client.PostAsync("/api/v1/shifts/open", new { OpeningCash = openingCash }, db.CashierToken(), device);
+
+    private Task<(HttpStatusCode Status, System.Text.Json.JsonElement Body)> Close(Guid device, object body) =>
+        _client.PostAsync("/api/v1/shifts/close", body, db.CashierToken(), device);
 
     [DatabaseFact]
     public async Task Open_creates_shift_with_number()
@@ -89,18 +92,6 @@ public class ShiftApiTests(DatabaseFixture db) : IAsyncLifetime
     }
 
     [DatabaseFact]
-    public async Task Unknown_or_inactive_device_and_unknown_cashier_are_rejected()
-    {
-        var (s1, b1) = await Open(Guid.CreateVersion7());
-        var (s2, b2) = await Open(await db.CreateDeviceAsync(status: "PENDING"));
-        var (s3, b3) = await Open(await db.CreateDeviceAsync(), cashier: Guid.CreateVersion7());
-
-        Assert.Equal((HttpStatusCode.UnprocessableEntity, "unknown_device"), (s1, b1.Str("code")));
-        Assert.Equal((HttpStatusCode.UnprocessableEntity, "device_not_active"), (s2, b2.Str("code")));
-        Assert.Equal((HttpStatusCode.UnprocessableEntity, "unknown_cashier"), (s3, b3.Str("code")));
-    }
-
-    [DatabaseFact]
     public async Task Negative_opening_cash_is_rejected()
     {
         var (status, body) = await Open(await db.CreateDeviceAsync(), openingCash: -1m);
@@ -115,7 +106,7 @@ public class ShiftApiTests(DatabaseFixture db) : IAsyncLifetime
         var device = await db.CreateDeviceAsync();
         var (_, opened) = await Open(device, openingCash: 150000m);
 
-        var (status, closed) = await _client.PostAsync("/api/v1/shifts/close",
+        var (status, closed) = await Close(device,
             new { ShiftId = opened.Id(), CountedCash = 149500m, Notes = "kurang 500" });
 
         Assert.Equal(HttpStatusCode.OK, status);
@@ -135,11 +126,12 @@ public class ShiftApiTests(DatabaseFixture db) : IAsyncLifetime
     [DatabaseFact]
     public async Task Closing_twice_or_unknown_shift_is_rejected()
     {
-        var (_, opened) = await Open(await db.CreateDeviceAsync());
-        await _client.PostAsync("/api/v1/shifts/close", new { ShiftId = opened.Id(), CountedCash = 200000m });
+        var device = await db.CreateDeviceAsync();
+        var (_, opened) = await Open(device);
+        await Close(device, new { ShiftId = opened.Id(), CountedCash = 200000m });
 
-        var (again, againBody) = await _client.PostAsync("/api/v1/shifts/close", new { ShiftId = opened.Id(), CountedCash = 200000m });
-        var (unknown, unknownBody) = await _client.PostAsync("/api/v1/shifts/close", new { ShiftId = Guid.CreateVersion7(), CountedCash = 0m });
+        var (again, againBody) = await Close(device, new { ShiftId = opened.Id(), CountedCash = 200000m });
+        var (unknown, unknownBody) = await Close(device, new { ShiftId = Guid.CreateVersion7(), CountedCash = 0m });
 
         Assert.Equal((HttpStatusCode.Conflict, "shift_already_closed"), (again, againBody.Str("code")));
         Assert.Equal((HttpStatusCode.NotFound, "unknown_shift"), (unknown, unknownBody.Str("code")));

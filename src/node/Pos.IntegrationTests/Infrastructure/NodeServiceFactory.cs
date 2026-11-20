@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Pos.IntegrationTests.Infrastructure;
 
-/// <summary>In-memory Node Service pointed at pos_test as node TK01.</summary>
+/// <summary>In-memory Node Service pointed at pos_test as node TK01, sharing the fixture's signing key.</summary>
 public sealed class NodeServiceFactory(DatabaseFixture db) : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
@@ -13,5 +13,7 @@ public sealed class NodeServiceFactory(DatabaseFixture db) : WebApplicationFacto
             ["ConnectionStrings:Pos"] = db.ConnectionString,
             ["Database:MigrationsPath"] = DatabaseFixture.MigrationsPath,
             ["Node:Code"] = "TK01",
+            ["Auth:KeyPath"] = db.KeyPath,
+            ["Auth:TokenLifetimeHours"] = "12",
         }));
 }

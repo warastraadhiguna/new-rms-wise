@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration.Json;
 using MySqlConnector;
 using Pos.NodeService.Api;
+using Pos.NodeService.Auth;
 using Pos.NodeService.Data;
 using Pos.NodeService.Sales;
 using Pos.NodeService.Shifts;
@@ -44,6 +45,7 @@ builder.Services.AddSingleton(sp => new NodeIdentity(
     sp.GetRequiredService<IConfiguration>()["Node:Code"] ?? ""));
 builder.Services.AddSingleton<TransactionRunner>();
 builder.Services.AddSingleton(sp => new StockPostingService(sp.GetRequiredService<TransactionRunner>()));
+builder.Services.AddPosAuth();
 builder.Services.AddSingleton<ShiftService>();
 builder.Services.AddSingleton(sp => new SaleService(
     sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<NodeIdentity>(), sp.GetRequiredService<TimeProvider>()));
@@ -94,6 +96,19 @@ if (!migration.Successful)
 }
 startupLog.LogInformation("Database migrations applied: {Count} ({Scripts}).",
     migration.ScriptsApplied.Count, migration.ScriptsApplied.Count == 0 ? "up to date" : string.Join(", ", migration.ScriptsApplied));
+
+// The node's signing key is created on the first start (or loaded) before any request arrives.
+try
+{
+    var tokens = app.Services.GetRequiredService<TokenService>();
+    startupLog.LogInformation("Access tokens: issuer {Issuer}, lifetime {Hours} h, key {Path}.",
+        tokens.Issuer, tokens.Lifetime.TotalHours, app.Configuration["Auth:KeyPath"] ?? SigningKeyStore.DefaultPath);
+}
+catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or IOException or UnauthorizedAccessException)
+{
+    startupLog.LogCritical("Cannot load or create the JWT signing key: {Error}. Node Service stopped.", ex.Message);
+    return 1;
+}
 
 // `dotnet run -- seed-dev`: development data only, then exit. Refuses databases not named *_dev.
 if (args.Contains("seed-dev"))

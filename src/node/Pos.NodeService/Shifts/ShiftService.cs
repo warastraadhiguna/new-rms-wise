@@ -17,7 +17,8 @@ public static class ShiftStatus
     public const string Closed = "CLOSED";
 }
 
-public sealed record OpenShiftRequest(Guid CashierId, Guid DeviceId, decimal OpeningCash);
+/// <summary>The cashier comes from the access token and the device from header X-Device-Id.</summary>
+public sealed record OpenShiftRequest(decimal OpeningCash);
 
 public sealed record CloseShiftRequest(Guid ShiftId, decimal CountedCash, string? Notes = null);
 
@@ -41,11 +42,11 @@ public sealed record ShiftDto(
 
 /// <summary>
 /// Cashier shifts: one OPEN shift per device. Closing computes the expected drawer cash.
-/// The cashier and device come from the request until authentication exists.
+/// The cashier is the logged-in user; the device is the one the request came from.
 /// </summary>
 public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIdentity, TimeProvider clock)
 {
-    public async Task<ShiftDto> OpenAsync(OpenShiftRequest request, CancellationToken cancellationToken = default)
+    public async Task<ShiftDto> OpenAsync(OpenShiftRequest request, Guid deviceId, Guid cashierId, CancellationToken cancellationToken = default)
     {
         if (request.OpeningCash < 0)
             throw ApiException.Unprocessable("invalid_amount", "Opening cash must not be negative.");
@@ -55,23 +56,17 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
         return await runner.RunAsync(async (c, tx, ct) =>
         {
             // Locking the device row serialises shift opening per device.
+            // (DeviceFilter already checked the device is an ACTIVE device of this node.)
             var device = await c.QuerySingleOrDefaultAsync<(Guid NodeId, string Status)?>(new CommandDefinition(
-                "SELECT node_id, status FROM devices WHERE id = @DeviceId AND deleted_at IS NULL FOR UPDATE",
-                new { request.DeviceId }, tx, cancellationToken: ct));
-            if (device is null || device.Value.NodeId != node.Id)
-                throw ApiException.Unprocessable("unknown_device", $"Device {request.DeviceId} is not registered at node {node.Code}.");
-            if (device.Value.Status != "ACTIVE")
-                throw ApiException.Unprocessable("device_not_active", $"Device {request.DeviceId} is {device.Value.Status}.");
-
-            var cashierActive = await c.QuerySingleOrDefaultAsync<bool?>(new CommandDefinition(
-                "SELECT is_active FROM users WHERE id = @CashierId AND deleted_at IS NULL",
-                new { request.CashierId }, tx, cancellationToken: ct));
-            if (cashierActive is not true)
-                throw ApiException.Unprocessable("unknown_cashier", $"Cashier {request.CashierId} does not exist or is inactive.");
+                "SELECT node_id, status FROM devices WHERE id = @deviceId AND deleted_at IS NULL FOR UPDATE",
+                new { deviceId }, tx, cancellationToken: ct));
+            if (device is null || device.Value.NodeId != node.Id || device.Value.Status != "ACTIVE")
+                throw new ApiException(StatusCodes.Status403Forbidden, "device_not_allowed",
+                    $"Device {deviceId} is not an active device of node {node.Code}.");
 
             var existing = await c.QuerySingleOrDefaultAsync<(Guid Id, string Number)?>(new CommandDefinition(
-                "SELECT id, number FROM cashier_shifts WHERE device_id = @DeviceId AND status = @open",
-                new { request.DeviceId, open = ShiftStatus.Open }, tx, cancellationToken: ct));
+                "SELECT id, number FROM cashier_shifts WHERE device_id = @deviceId AND status = @open",
+                new { deviceId, open = ShiftStatus.Open }, tx, cancellationToken: ct));
             if (existing is not null)
                 throw ApiException.Conflict("shift_already_open",
                     $"Device already has open shift {existing.Value.Number}.",
@@ -84,12 +79,12 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
             await c.ExecuteAsync(new CommandDefinition(
                 """
                 INSERT INTO cashier_shifts (id, node_id, number, device_id, cashier_id, opened_at, opening_cash, status, row_version)
-                VALUES (@id, @nodeId, @number, @DeviceId, @CashierId, @now, @OpeningCash, @open, 1)
+                VALUES (@id, @nodeId, @number, @deviceId, @cashierId, @now, @OpeningCash, @open, 1)
                 """,
-                new { id, nodeId = node.Id, number, request.DeviceId, request.CashierId, now, request.OpeningCash, open = ShiftStatus.Open },
+                new { id, nodeId = node.Id, number, deviceId, cashierId, now, request.OpeningCash, open = ShiftStatus.Open },
                 tx, cancellationToken: ct));
 
-            var dto = new ShiftDto(id, node.Id, number, request.DeviceId, request.CashierId, ShiftStatus.Open, now, null,
+            var dto = new ShiftDto(id, node.Id, number, deviceId, cashierId, ShiftStatus.Open, now, null,
                 request.OpeningCash, null, null, null, null, null, null, 1);
             await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.CashierShift, id, dto.RowVersion, dto, ct);
             return dto;

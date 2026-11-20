@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Pos.Shared.Sync;
@@ -8,9 +9,22 @@ namespace Pos.IntegrationTests.Infrastructure;
 /// <summary>HTTP helpers that speak the Node Service JSON conventions.</summary>
 public static class ApiClient
 {
-    public static async Task<(HttpStatusCode Status, JsonElement Body)> PostAsync(this HttpClient client, string url, object body)
+    public const string DeviceHeader = "X-Device-Id";
+
+    /// <summary>POST JSON, optionally with a bearer token and the device header.</summary>
+    public static async Task<(HttpStatusCode Status, JsonElement Body)> PostAsync(
+        this HttpClient client, string url, object body, string? token = null, Guid? device = null)
     {
-        using var response = await client.PostAsJsonAsync(url, body, PosJson.Options);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = JsonContent.Create(body, body.GetType(), options: PosJson.Options),
+        };
+        if (token is not null)
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (device is not null)
+            request.Headers.Add(DeviceHeader, device.Value.ToString());
+
+        using var response = await client.SendAsync(request);
         var text = await response.Content.ReadAsStringAsync();
         var json = string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
         return (response.StatusCode, json);
