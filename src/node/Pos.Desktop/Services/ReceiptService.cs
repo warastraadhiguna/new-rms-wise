@@ -111,7 +111,7 @@ public sealed class ReceiptService(
             sale.Receipt.HeaderLines,
             sale.Receipt.FooterLines,
             sale.Number,
-            ToBranchTime(sale.SoldAt, sale.TimeZone),
+            BranchTime.ToLocal(sale.SoldAt, sale.TimeZone),
             sale.Cashier.FullName,
             sale.Customer is { } c ? $"{c.Code} - {c.Name}" : null,
             sale.Lines.Select(l => new ReceiptItem(l.Name, l.Qty, l.UnitCode, l.UnitPrice, l.LineTotal)).ToList(),
@@ -122,18 +122,5 @@ public sealed class ReceiptService(
             sale.Total,
             sale.Payments.Select(p => new ReceiptPayment(p.MethodName, p.IsCash, p.IsCredit, p.Amount, p.Tendered, p.ChangeGiven)).ToList(),
             sale.DueDate);
-    }
-
-    private static DateTime ToBranchTime(DateTime soldAt, string timeZone)
-    {
-        var utc = soldAt.Kind == DateTimeKind.Utc ? soldAt : DateTime.SpecifyKind(soldAt.ToUniversalTime(), DateTimeKind.Utc);
-        try
-        {
-            return TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById(timeZone));
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return utc.ToLocalTime();
-        }
     }
 }

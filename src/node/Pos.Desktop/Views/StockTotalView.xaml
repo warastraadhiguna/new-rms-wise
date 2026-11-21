@@ -6,6 +6,7 @@
              infra:FocusBehavior.Request="{Binding FocusRequest}">
     <UserControl.InputBindings>
         <KeyBinding Key="F8" Command="{Binding ExportCommand}" />
+        <KeyBinding Key="F9" Command="{Binding OpenStockCardCommand}" />
         <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
     </UserControl.InputBindings>
     <UserControl.Resources>
@@ -73,6 +74,7 @@
             </GroupBox>
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button x:Name="StockCheckButton" Content="Cek Stok [Enter]" Command="{Binding OpenStockCheckCommand}" />
+                <Button x:Name="StockCardButton" Content="Kartu Stok [F9]" Command="{Binding OpenStockCardCommand}" />
                 <Button x:Name="ExportButton" Content="Export to File [F8]" Command="{Binding ExportCommand}" />
             </StackPanel>
             <StackPanel VerticalAlignment="Center" Margin="12,0">

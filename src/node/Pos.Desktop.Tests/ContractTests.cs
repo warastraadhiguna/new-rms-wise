@@ -111,6 +111,25 @@ public class ContractTests
     }
 
     [Fact]
+    public async Task Stock_card()
+    {
+        _server.Reply(HttpStatusCode.OK, Json("stock-card"));
+        var water = Guid.Parse("01a1f74b-737d-7830-845c-13f0d6777819");
+
+        var card = await Client().GetStockCardAsync(water, null, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 22), 0, 500);
+
+        Assert.Equal($"/api/v1/stock/card?product_id={water}&from=2026-11-01&to=2026-11-22&offset=0&limit=500",
+            _server.Requests[0].Request.RequestUri!.PathAndQuery);
+        Assert.Equal(("AIR-600", "Asia/Jakarta", 0m, 11m), (card.Sku, card.TimeZone, card.OpeningBalance, card.ClosingBalance));
+        Assert.Equal(card.TotalRows, card.Rows.Count);
+        var first = card.Rows[0];
+        Assert.Equal(("ADJUSTMENT", "Penyesuaian", "TK01-ADJ-202611-000001", "Admin Dev"), (first.DocType, first.DocLabel, first.DocNumber, first.UserName));
+        Assert.Equal(DateTimeKind.Utc, first.OccurredAt.Kind);
+        Assert.Equal(card.ClosingBalance, card.Rows[^1].Balance);
+        Assert.Contains(card.Rows, r => r is { DocType: "SALE", UserName: "Kasir Satu" } && r.QtyOut > 0);
+    }
+
+    [Fact]
     public async Task Customer_search()
     {
         _server.Reply(HttpStatusCode.OK, Json("customers"));

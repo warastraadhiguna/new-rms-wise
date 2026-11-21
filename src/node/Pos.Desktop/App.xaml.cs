@@ -59,10 +59,12 @@ public partial class App : Application
         services.AddTransient(sp => new StockTotalViewModel(
             sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<IPreferenceStore<StockTotalViewSettings>>()));
         services.AddTransient(sp => new StockCheckViewModel(sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>()));
+        services.AddTransient(sp => new StockCardViewModel(sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>()));
         services.AddTransient(sp => new MainViewModel(sp.GetRequiredService<SessionState>(), new FormFactories(
             Sales: sp.GetRequiredService<Func<SalesViewModel>>(),
             StockTotal: () => sp.GetRequiredService<StockTotalViewModel>(),
-            StockCheck: () => sp.GetRequiredService<StockCheckViewModel>())));
+            StockCheck: () => sp.GetRequiredService<StockCheckViewModel>(),
+            StockCard: () => sp.GetRequiredService<StockCardViewModel>())));
         services.AddTransient<LoginWindow>();
         services.AddTransient<OpenShiftWindow>();
         services.AddTransient<MainWindow>();

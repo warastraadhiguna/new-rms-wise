@@ -17,4 +17,28 @@ public static class BranchClock
 
         return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone));
     }
+
+    /// <summary>
+    /// UTC moment the branch's <paramref name="date"/> begins (local midnight). A midnight skipped by daylight saving
+    /// moves to the first valid local time of that day.
+    /// </summary>
+    public static DateTime StartOfDayUtc(DateOnly date, TimeZoneInfo timeZone)
+    {
+        ArgumentNullException.ThrowIfNull(timeZone);
+        var local = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        while (timeZone.IsInvalidTime(local))
+            local = local.AddMinutes(30);
+        return TimeZoneInfo.ConvertTimeToUtc(local, timeZone);
+    }
+
+    /// <summary>
+    /// Whole branch days <paramref name="from"/>..<paramref name="to"/> (inclusive) as a UTC range [start, end).
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="to"/> is before <paramref name="from"/>.</exception>
+    public static (DateTime FromUtc, DateTime ToUtcExclusive) DayRangeUtc(DateOnly from, DateOnly to, TimeZoneInfo timeZone)
+    {
+        if (to < from)
+            throw new ArgumentException($"The end date {to} is before the start date {from}.", nameof(to));
+        return (StartOfDayUtc(from, timeZone), StartOfDayUtc(to.AddDays(1), timeZone));
+    }
 }

@@ -70,6 +70,9 @@ public sealed partial class StockTotalViewModel : FormTab
     /// <summary>Enter / double-click: open "Form Cek Stok" for the row.</summary>
     public event EventHandler<StockTotalRow>? OpenStockCheckRequested;
 
+    /// <summary>F9: open the Kartu Stok of the row's product and location.</summary>
+    public event EventHandler<StockTotalRow>? OpenStockCardRequested;
+
     [ObservableProperty] private string _searchText = "";
     [ObservableProperty] private LocationOption _selectedLocation;
     [ObservableProperty] private StockTotalRow? _selectedRow;
@@ -159,6 +162,14 @@ public sealed partial class StockTotalViewModel : FormTab
     {
         if (SelectedRow is { } row)
             OpenStockCheckRequested?.Invoke(this, row);
+    }
+
+    /// <summary>F9 "Kartu Stok".</summary>
+    [RelayCommand]
+    private void OpenStockCard()
+    {
+        if (SelectedRow is { } row)
+            OpenStockCardRequested?.Invoke(this, row);
     }
 
     /// <summary>F8 "Export to File": every row of the current search and location, not only the page shown.</summary>

@@ -5,7 +5,9 @@ using Pos.NodeService.Catalog;
 using Pos.NodeService.Customers;
 using Pos.NodeService.Sales;
 using Pos.NodeService.Shifts;
+using Pos.NodeService.Nodes;
 using Pos.NodeService.Stock;
+using Pos.Shared.Time;
 using Pos.Shared.Auth;
 
 namespace Pos.NodeService.Api;
@@ -89,6 +91,15 @@ public static class ApiEndpoints
         stock.MapGet("/products/{productId:guid}/expiry", (Guid productId, [FromQuery(Name = "location_id")] Guid? locationId,
                 StockQueryService service, CancellationToken ct) =>
             service.GetExpiryAsync(productId, locationId, ct));
+        // Kartu Stok: paged ledger rows with running balance; from/to are branch dates (default: this month).
+        stock.MapGet("/card", async ([FromQuery(Name = "product_id")] Guid productId, [FromQuery(Name = "location_id")] Guid? locationId,
+                DateOnly? from, DateOnly? to, int? offset, int? limit, StockCardService service, NodeIdentity nodeIdentity,
+                TimeProvider clock, CancellationToken ct) =>
+            {
+                var today = BranchClock.Today(clock.GetUtcNow().UtcDateTime, (await nodeIdentity.GetAsync(ct)).TimeZone);
+                return await service.GetAsync(productId, locationId, from ?? new DateOnly(today.Year, today.Month, 1), to ?? today,
+                    offset ?? 0, limit ?? 500, ct);
+            });
 
         // Stock integrity (admin). The nightly check never repairs; a person reviews and then rebuilds.
         var stockAdmin = api.MapGroup("/admin/stock").RequireAuthorization(Permissions.StockRebuild);

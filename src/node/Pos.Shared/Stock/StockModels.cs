@@ -52,6 +52,20 @@ public static class StockDocTypes
         [Sale, SaleReturn, GoodsReceipt, Delivery, LocationTransfer, Adjustment];
 
     public static bool IsDefined(string? value) => value is not null && All.Contains(value);
+
+    /// <summary>
+    /// "Jenis Dokumen" on the Kartu Stok: Penjualan, Retur, Terima Barang, Mutasi (between nodes or locations),
+    /// Penyesuaian, or Opname (an adjustment that comes from a stock count). Unknown types show their code.
+    /// </summary>
+    public static string Label(string docType, bool fromStockCount) => docType switch
+    {
+        Sale => "Penjualan",
+        SaleReturn => "Retur",
+        GoodsReceipt => "Terima Barang",
+        Delivery or LocationTransfer => "Mutasi",
+        Adjustment => fromStockCount ? "Opname" : "Penyesuaian",
+        _ => docType,
+    };
 }
 
 /// <summary>

@@ -156,8 +156,10 @@ public sealed partial class PickerDialogViewModel : DialogViewModel
 }
 
 /// <summary>Receipt shown on screen when no printer is set or printing failed (monospace, same width as on paper).</summary>
-public sealed partial class ReceiptPreviewViewModel(string message, IReadOnlyList<string> lines) : DialogViewModel
+public sealed partial class ReceiptPreviewViewModel(string message, IReadOnlyList<string> lines, string title = "Pratinjau Struk") : DialogViewModel
 {
+    public string Title { get; } = title;
+
     public string Message { get; } = message;
 
     public string ReceiptText { get; } = string.Join(Environment.NewLine, lines);

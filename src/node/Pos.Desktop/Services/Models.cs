@@ -164,6 +164,9 @@ public interface INodeApi
 
     /// <summary>Form Cek Stok: one product's stock per expiry date.</summary>
     Task<StockExpiry> GetStockExpiryAsync(Guid productId, Guid? locationId, CancellationToken ct = default);
+
+    /// <summary>Kartu Stok: branch dates from..to inclusive, one page of ledger rows.</summary>
+    Task<StockCard> GetStockCardAsync(Guid productId, Guid? locationId, DateOnly from, DateOnly to, int offset, int limit, CancellationToken ct = default);
 }
 
 public sealed record SupervisorCredentials(string Username, string Password);
@@ -200,6 +203,9 @@ public interface IDialogService
 
     /// <summary>"Export to File": where to save; null when cancelled.</summary>
     string? AskSaveFile(string suggestedFileName);
+
+    /// <summary>A source document as monospace text (Kartu Stok double-click).</summary>
+    void ShowDocumentDetail(string title, string message, IReadOnlyList<string> lines);
 }
 
 /// <summary>Switches between the top-level windows.</summary>
@@ -339,3 +345,57 @@ public sealed record StockExpiry(
     DateOnly Today,
     int WarningDays,
     IReadOnlyList<StockExpiryRow> Rows);
+
+/// <summary>One ledger row of the Kartu Stok (quantities in the base unit).</summary>
+/// <param name="OccurredAt">UTC.</param>
+public sealed record StockCardRow(
+    Guid LedgerId,
+    DateTime OccurredAt,
+    string DocType,
+    string DocLabel,
+    Guid DocId,
+    string? DocNumber,
+    string? UserName,
+    Guid LocationId,
+    string LocationCode,
+    DateOnly? ExpiryDate,
+    decimal QtyIn,
+    decimal QtyOut,
+    decimal Balance);
+
+/// <summary>GET /api/v1/stock/card: totals over the whole range, one page of rows.</summary>
+public sealed record StockCard(
+    Guid ProductId,
+    string Sku,
+    string Name,
+    string BaseUnitCode,
+    bool BaseAllowDecimal,
+    Guid? LocationId,
+    DateOnly From,
+    DateOnly To,
+    string TimeZone,
+    decimal OpeningBalance,
+    decimal TotalIn,
+    decimal TotalOut,
+    decimal ClosingBalance,
+    int TotalRows,
+    int Offset,
+    int Limit,
+    IReadOnlyList<StockCardRow> Rows);
+
+/// <summary>Node Service UTC times shown in the branch's timezone.</summary>
+public static class BranchTime
+{
+    public static DateTime ToLocal(DateTime value, string timeZone)
+    {
+        var utc = value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value.ToUniversalTime(), DateTimeKind.Utc);
+        try
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById(timeZone));
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return utc.ToLocalTime();
+        }
+    }
+}

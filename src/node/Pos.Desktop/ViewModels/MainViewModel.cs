@@ -10,10 +10,11 @@ namespace Pos.Desktop.ViewModels;
 public sealed record FormFactories(
     Func<SalesViewModel>? Sales = null,
     Func<StockTotalViewModel>? StockTotal = null,
-    Func<StockCheckViewModel>? StockCheck = null);
+    Func<StockCheckViewModel>? StockCheck = null,
+    Func<StockCardViewModel>? StockCard = null);
 
 /// <summary>
-/// The main window: a menu per group as in RMS 2 (Penjualan, Stok, Laporan), shown by permission (sale.create,
+/// The main window: a menu per group as in RMS 2 (Penjualan, Stok, Laporan: Kartu Stok), shown by permission (sale.create,
 /// stock.view), and every form as a tab with ×. Cashiers start in "Form Penjualan" (F2 reopens it); users without
 /// sale.create start in "Form Stok Total". The status bar shows user, shift and node.
 /// </summary>
@@ -89,6 +90,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         var form = _forms.StockTotal();
         form.OpenStockCheckRequested += (_, row) => _ = OpenStockCheckAsync(row.ProductId, row.LocationId);
+        form.OpenStockCardRequested += (_, row) => _ = OpenStockCardAsync(row.ProductId, row.LocationId);
         Show(form);
     }
 
@@ -105,6 +107,23 @@ public sealed partial class MainViewModel : ObservableObject
         if (!CanViewStock || _forms.StockCheck is null)
             return null;
         var form = Tabs.OfType<StockCheckViewModel>().FirstOrDefault() ?? _forms.StockCheck();
+        Show(form);
+        return form;
+    }
+
+    /// <summary>Menu Laporan → Kartu Stok (choose the product with F1).</summary>
+    [RelayCommand]
+    private void OpenStockCard() => StockCardTab();
+
+    /// <summary>F9 from Form Stok Total: the selected row's product and location, this month. One Kartu Stok tab is reused.</summary>
+    public Task OpenStockCardAsync(Guid productId, Guid? locationId) =>
+        StockCardTab() is { } form ? form.ShowAsync(productId, locationId) : Task.CompletedTask;
+
+    private StockCardViewModel? StockCardTab()
+    {
+        if (!CanViewStock || _forms.StockCard is null)
+            return null;
+        var form = Tabs.OfType<StockCardViewModel>().FirstOrDefault() ?? _forms.StockCard();
         Show(form);
         return form;
     }

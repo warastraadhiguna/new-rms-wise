@@ -171,6 +171,25 @@ public sealed class FakeNodeApi : INodeApi
         Calls.Add($"stock-expiry:{productId}:{locationId?.ToString() ?? "all"}");
         return Task.FromResult((OnStockExpiry ?? ((id, location) => Stock.Expiry(id, location)))(productId, locationId));
     }
+
+    /// <summary>The whole card (all rows); each call returns the requested page of it, like the server.</summary>
+    public StockCard StockCardData { get; set; } = Stock.Card(3);
+
+    public Task<StockCard> GetStockCardAsync(Guid productId, Guid? locationId, DateOnly from, DateOnly to, int offset, int limit, CancellationToken ct = default)
+    {
+        Calls.Add($"stock-card:{productId}:{locationId?.ToString() ?? "all"}:{from:yyyy-MM-dd}:{to:yyyy-MM-dd}:{offset}:{limit}");
+        var card = StockCardData;
+        return Task.FromResult(card with
+        {
+            ProductId = productId,
+            LocationId = locationId,
+            From = from,
+            To = to,
+            Offset = offset,
+            Limit = limit,
+            Rows = card.Rows.Skip(offset).Take(limit).ToList(),
+        });
+    }
 }
 
 /// <summary>Scripted answers for the sales screen's dialogs; records what was asked.</summary>
@@ -221,6 +240,10 @@ public sealed class FakeDialogs : IDialogService
     public string? SaveFilePath { get; set; }
 
     public string? AskSaveFile(string suggestedFileName) { Asked.Add($"save-file:{suggestedFileName}"); return SaveFilePath; }
+
+    public List<(string Title, string Message, IReadOnlyList<string> Lines)> Documents { get; } = [];
+
+    public void ShowDocumentDetail(string title, string message, IReadOnlyList<string> lines) { Asked.Add($"document:{title}"); Documents.Add((title, message, lines)); }
 }
 
 public sealed class MemoryCartStore : ICartStore
@@ -360,6 +383,30 @@ public static class Stock
         new(productId ?? Guid.CreateVersion7(), sku, name, "Minuman", "Merek X", "Rak A", (location ?? Display).Id, (location ?? Display).Code,
             (location ?? Display).Name, "PCS", false, displayUnit, conversion, baseQty);
 
+    public static readonly Guid SaleDocId = Guid.Parse("01930000-0000-7000-8000-0000000000e1");
+
+    /// <summary>
+    /// A card with opening 10 and <paramref name="rows"/> movements: SALE -2 (first row, doc <see cref="SaleDocId"/>),
+    /// then alternating ADJUSTMENT +5 / SALE -2, one minute apart from 20 Nov 2026 02:00 UTC (09:00 WIB).
+    /// </summary>
+    public static StockCard Card(int rows)
+    {
+        var list = new List<StockCardRow>();
+        var balance = 10m;
+        for (var i = 0; i < rows; i++)
+        {
+            var sale = i % 2 == 0;
+            var qty = sale ? -2m : 5m;
+            balance += qty;
+            list.Add(new StockCardRow(Guid.CreateVersion7(), new DateTime(2026, 11, 20, 2, i % 60, 0, DateTimeKind.Utc).AddHours(i / 60),
+                sale ? "SALE" : "ADJUSTMENT", sale ? "Penjualan" : "Penyesuaian", i == 0 ? SaleDocId : Guid.CreateVersion7(),
+                sale ? $"TK01-SL-202611-{i + 1:000000}" : $"TK01-ADJ-202611-{i + 1:000000}", sale ? "Kasir Satu" : "Admin Dev",
+                Display.Id, "DISPLAY", sale ? new DateOnly(2027, 6, 1) : null, Math.Max(qty, 0), Math.Max(-qty, 0), balance));
+        }
+        return new StockCard(Guid.Empty, "AIR-600", "Air mineral 600 ml", "PCS", false, null, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 22),
+            "Asia/Jakarta", 10m, list.Sum(r => r.QtyIn), list.Sum(r => r.QtyOut), balance, rows, 0, rows, list);
+    }
+
     public static StockExpiry Expiry(Guid productId, Guid? locationId) => new(
         productId, "AIR-600", "Air mineral 600 ml", "PCS", false, "BOX", 24m, true, new DateOnly(2026, 11, 22), 30,
         [
@@ -368,3 +415,4 @@ public static class Stock
             new StockExpiryRow(Display.Id, "DISPLAY", new DateOnly(2027, 6, 1), 48m, "ok"),
         ]);
 }
+

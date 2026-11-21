@@ -17,6 +17,9 @@
         <DataTemplate DataType="{x:Type vm:StockTotalViewModel}">
             <views:StockTotalView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:StockCardViewModel}">
+            <views:StockCardView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:StockCheckViewModel}">
             <views:StockCheckView />
         </DataTemplate>
@@ -34,6 +37,10 @@
                       Visibility="{Binding CanViewStock, Converter={StaticResource BoolToVisibility}}">
                 <MenuItem x:Name="StockTotalMenuItem" Header="Stok Total" Command="{Binding OpenStockTotalCommand}" />
                 <MenuItem x:Name="StockCheckMenuItem" Header="Cek Stok" Command="{Binding OpenStockCheckCommand}" />
+            </MenuItem>
+            <MenuItem x:Name="ReportMenu" Header="_Laporan"
+                      Visibility="{Binding CanViewStock, Converter={StaticResource BoolToVisibility}}">
+                <MenuItem x:Name="StockCardMenuItem" Header="Kartu Stok" Command="{Binding OpenStockCardCommand}" />
             </MenuItem>
         </Menu>
 

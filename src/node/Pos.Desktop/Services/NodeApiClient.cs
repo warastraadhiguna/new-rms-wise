@@ -76,6 +76,14 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
             $"api/v1/stock/products/{productId}/expiry" + (locationId is { } location ? $"?location_id={location}" : ""),
             null, authenticated: true, withDevice: false, ct);
 
+    public Task<StockCard> GetStockCardAsync(
+        Guid productId, Guid? locationId, DateOnly from, DateOnly to, int offset, int limit, CancellationToken ct = default) =>
+        SendAsync<StockCard>(HttpMethod.Get,
+            string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"api/v1/stock/card?product_id={productId}&from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}&offset={offset}&limit={limit}") +
+            (locationId is { } location ? $"&location_id={location}" : ""),
+            null, authenticated: true, withDevice: false, ct);
+
     public Task<CartCancellationResult> CancelCartAsync(
         Guid id, string reason, decimal totalAmount, IReadOnlyList<CartCancellationLine> lines, CancellationToken ct = default) =>
         SendAsync<CartCancellationResult>(HttpMethod.Post, "api/v1/cart-cancellations",
