@@ -26,7 +26,7 @@ public class StockIntegrityTests(DatabaseFixture db)
 
     private async Task<string> AdminTokenAsync()
     {
-        var username = "stockadmin" + Random.Shared.Next(100000, 999999);
+        var username = "stockadmin" + Guid.NewGuid().ToString("N")[..12];
         var userId = await db.CreateUserAsync(username, "secret", roles: [("[\"stock.rebuild\"]", (Guid?)null)]);
         return db.TokenFor(userId, username, [Permissions.StockRebuild]);
     }

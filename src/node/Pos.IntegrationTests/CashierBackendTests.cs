@@ -228,7 +228,9 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
         var badAction = await Approve(cashier.Token, "sale.void.everything", supervisor.Name, "secret-1");
         var badPassword = await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "wrong-pass");
         var anonymous = await _client.PostAsync("/api/v1/auth/approve", new { Action = "sale.line.delete", Username = supervisor.Name, Password = "secret-1" });
+        var before = DateTime.UtcNow;
         var ok = await Approve(cashier.Token, "sale.line.delete", supervisor.Name, "secret-1");
+        var after = DateTime.UtcNow;
 
         Assert.Equal((HttpStatusCode.UnprocessableEntity, "invalid_action"), (badAction.Status, badAction.Body.Str("code")));
         Assert.Equal((HttpStatusCode.Forbidden, "approval_rejected"), (badPassword.Status, badPassword.Body.Str("code")));
@@ -236,7 +238,7 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, ok.Status);
         Assert.Equal("sale.line.delete", ok.Body.Str("action"));
         var expiresAt = DateTime.Parse(ok.Body.Str("expires_at"), null, System.Globalization.DateTimeStyles.AdjustToUniversal);
-        Assert.InRange(expiresAt, DateTime.UtcNow, DateTime.UtcNow.AddMinutes(5));
+        Assert.InRange(expiresAt, before.AddSeconds(-1), after.AddMinutes(5).AddSeconds(1));
     }
 
     [DatabaseFact]
@@ -447,7 +449,10 @@ public class CashierBackendTests(DatabaseFixture db) : IAsyncLifetime
     [DatabaseFact]
     public async Task Login_response_names_the_node()
     {
-        var (_, body) = await _client.PostAsync("/api/v1/auth/login", new { Username = "kasir1", Password = "kasir123" });
+        // a user of its own: no test logs in with a user another test relies on (lockout and cache stay separate)
+        var name = "u" + Guid.NewGuid().ToString("N")[..12];
+        await db.CreateUserAsync(name, "secret-1", roles: [("""["sale.create"]""", (Guid?)db.NodeId)]);
+        var (_, body) = await _client.PostAsync("/api/v1/auth/login", new { Username = name, Password = "secret-1" });
 
         Assert.Equal("TK01", body.GetProperty("node").Str("code"));
         Assert.Equal("Toko Dev", body.GetProperty("node").Str("name"));

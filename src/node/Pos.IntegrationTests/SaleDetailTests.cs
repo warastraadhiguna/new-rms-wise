@@ -31,6 +31,16 @@ public class SaleDetailTests(DatabaseFixture db) : IAsyncLifetime
             await _factory.DisposeAsync();
     }
 
+    private const string SupervisorPassword = "secret-1";
+
+    /// <summary>A supervisor of its own for each test, so no test can lock out or change a user another test uses.</summary>
+    private async Task<string> SupervisorAsync()
+    {
+        var name = "spv" + Guid.NewGuid().ToString("N")[..12];
+        await db.CreateUserAsync(name, SupervisorPassword, roles: [("[\"sale.discount.override\"]", (Guid?)null)]);
+        return name;
+    }
+
     private async Task<Guid> OpenShiftAsync()
     {
         var device = await db.CreateDeviceAsync();
@@ -63,8 +73,8 @@ public class SaleDetailTests(DatabaseFixture db) : IAsyncLifetime
             Lines = new[] { new { product.ProductUnitId, Qty = 3m } },
             Payments = new[] { new { Method = "CASH", Amount = 5000m } },
             DiscountPct = 10m,
-            SupervisorUsername = "admin",
-            SupervisorPassword = DevCredentials.AdminPassword,
+            SupervisorUsername = await SupervisorAsync(),
+            SupervisorPassword = SupervisorPassword,
         }, device);
 
         var (status, sale) = await _client.GetAsync($"/api/v1/sales/{id}", db.CashierToken());
@@ -117,8 +127,8 @@ public class SaleDetailTests(DatabaseFixture db) : IAsyncLifetime
             Lines = new[] { new { product.ProductUnitId, Qty = 2m } },
             Payments = new[] { new { Method = "CREDIT", Amount = 19000m } },
             DiscountAmount = 1000m,
-            SupervisorUsername = "admin",
-            SupervisorPassword = DevCredentials.AdminPassword,
+            SupervisorUsername = await SupervisorAsync(),
+            SupervisorPassword = SupervisorPassword,
         }, device);
 
         var (_, sale) = await _client.GetAsync($"/api/v1/sales/{id}", db.CashierToken());

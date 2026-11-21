@@ -51,7 +51,9 @@ public class AuthApiTests(DatabaseFixture db) : IAsyncLifetime
         var name = NewName();
         var userId = await db.CreateUserAsync(name, "secret-1", roles: (CashierRole, db.NodeId));
 
+        var before = DateTime.UtcNow;
         var (status, body) = await Login(name, "secret-1");
+        var after = DateTime.UtcNow;
 
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal("Bearer", body.Str("token_type"));
@@ -59,7 +61,8 @@ public class AuthApiTests(DatabaseFixture db) : IAsyncLifetime
         Assert.Equal(["sale.create", "shift.close", "shift.open"],
             body.GetProperty("permissions").EnumerateArray().Select(p => p.GetString()));
         var expiresAt = DateTime.Parse(body.Str("expires_at"), null, System.Globalization.DateTimeStyles.AdjustToUniversal);
-        Assert.InRange(expiresAt, DateTime.UtcNow.AddHours(11.9), DateTime.UtcNow.AddHours(12.1));
+        // bracketed by the clock around the call (not "now" afterwards); the token has whole seconds
+        Assert.InRange(expiresAt, before.AddHours(12).AddSeconds(-1), after.AddHours(12).AddSeconds(1));
 
         var (shiftStatus, shift) = await OpenShift(body.Str("access_token"));
         Assert.Equal(HttpStatusCode.Created, shiftStatus);

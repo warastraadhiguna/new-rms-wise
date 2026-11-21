@@ -16,6 +16,10 @@ public sealed class DatabaseFixture : IAsyncLifetime
 
     public DbConnectionFactory Factory { get; private set; } = null!;
     public MigrationOutcome Migration { get; private set; } = null!;
+
+    /// <summary>UTC clock right before and right after the fixture ran the migrations (for journal-time checks).</summary>
+    public DateTime MigrationStartedUtc { get; private set; }
+    public DateTime MigrationFinishedUtc { get; private set; }
     public string ConnectionString { get; private set; } = null!;
 
     /// <summary>Master data created by the dev seeder (node TK01).</summary>
@@ -46,7 +50,9 @@ public sealed class DatabaseFixture : IAsyncLifetime
         Tokens = new TokenService(SigningKeyStore.LoadOrCreate(KeyPath), "TK01", TimeSpan.FromHours(12));
 
         await DropAllTablesAsync();
+        MigrationStartedUtc = DateTime.UtcNow;
         Migration = new DatabaseMigrator(ConnectionString, MigrationsPath).Migrate();
+        MigrationFinishedUtc = DateTime.UtcNow;
         if (!Migration.Successful)
             throw new InvalidOperationException($"Migration failed in {Migration.FailedScript}: {Migration.Error}");
 
@@ -103,13 +109,19 @@ public sealed class DatabaseFixture : IAsyncLifetime
         return userId;
     }
 
-    /// <summary>Another node of the same branch (for "no rights at this node" cases).</summary>
+    private static int _otherNodes;
+
+    /// <summary>
+    /// Another node of the same branch (for "no rights at this node" cases). The code comes from a counter (the
+    /// database is recreated every run), never from a random number: nodes.code is unique, and a random "X123" once
+    /// collided between two tests and failed the second one before it even logged in.
+    /// </summary>
     public async Task<Guid> CreateOtherNodeAsync()
     {
         var id = Guid.CreateVersion7();
         await using var connection = await Factory.OpenAsync();
         await connection.ExecuteAsync("INSERT INTO nodes (id, branch_id, code, name, type) VALUES (@id, @BranchId, @code, 'Other', 'STORE')",
-            new { id, BranchId, code = "X" + Random.Shared.Next(100, 999) });
+            new { id, BranchId, code = "X" + Interlocked.Increment(ref _otherNodes).ToString("D4", System.Globalization.CultureInfo.InvariantCulture) });
         return id;
     }
 

@@ -46,8 +46,9 @@ public class DatabaseTests(DatabaseFixture db)
         var applied = await connection.ExecuteScalarAsync<DateTime>(
             $"SELECT applied FROM {DatabaseMigrator.JournalTable} WHERE scriptname = '0001_initial_schema.sql'");
 
-        // the fixture migrated at the start of this run
-        Assert.InRange(applied, DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow.AddMinutes(1));
+        // Compared with the moment the fixture migrated, not with "now": a slow or paused run (one took 32 minutes)
+        // must not fail. Local time here is UTC+7, so a non-UTC journal would be hours off. The column has whole seconds.
+        Assert.InRange(applied, db.MigrationStartedUtc.AddSeconds(-1), db.MigrationFinishedUtc.AddSeconds(1));
     }
 
     [DatabaseFact]
@@ -63,5 +64,22 @@ public class DatabaseTests(DatabaseFixture db)
         await using var second = await db.Factory.OpenAsync();
         Assert.Equal("+00:00", await second.ExecuteScalarAsync<string>("SELECT @@session.time_zone"));
         Assert.Equal(0, await second.ExecuteScalarAsync<long>("SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW())"));
+    }
+
+    /// <summary>
+    /// Regression: other nodes used the code "X" + a random 100..998, and nodes.code is unique, so two calls in one run
+    /// sometimes collided and failed AuthApiTests before login (7 ms instead of ~70 ms). 200 calls would always collide.
+    /// </summary>
+    [DatabaseFact]
+    public async Task Other_nodes_created_by_tests_never_share_a_code()
+    {
+        var ids = new List<Guid>();
+        for (var i = 0; i < 200; i++)
+            ids.Add(await db.CreateOtherNodeAsync());
+
+        await using var connection = await db.Factory.OpenAsync();
+        var codes = (await connection.QueryAsync<string>("SELECT code FROM nodes WHERE id IN @ids", new { ids })).ToList();
+        Assert.Equal(200, codes.Distinct().Count());
+        Assert.All(codes, c => Assert.True(c.Length <= 10, c));
     }
 }

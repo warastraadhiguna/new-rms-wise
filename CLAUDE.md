@@ -98,6 +98,10 @@ src/android/           Kotlin app (later)
   Enter takes the highlighted row; Up on the top row → back to the box (text kept, caret at the end); typing a
   character in the grid → it becomes the new text of the box (barcode scans keep working). After an item is taken,
   focus returns to the box. New searches need real-control UI tests for these keys (see `SearchNavigationUiTests.cs`).
+- **Integration test data never collides:** unique values (usernames, codes, numbers) come from a Guid or a
+  per-run counter, never from a small random range (`"X" + Random(100, 999)` once collided on a unique key and made
+  a test flaky). Each test uses its own users; only tests about the dev seed itself log in as seeded users, and
+  only with the correct password (so lockout and caches are never shared between tests).
 - Node Service: minimal APIs grouped by feature; MySqlConnector + EF Core 9 (Pomelo 9) or Dapper.
 - Async all the way for I/O. Pass `CancellationToken`.
 

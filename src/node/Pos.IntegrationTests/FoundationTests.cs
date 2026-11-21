@@ -46,7 +46,7 @@ public class FoundationTests(DatabaseFixture db)
     {
         var runner = new TransactionRunner(db.Factory);
         var node = await new NodeIdentity(db.Factory, "TK01").GetAsync();
-        var type = "T" + Random.Shared.Next(100, 999);   // fresh sequence for this test
+        const string type = "T901";   // own type code: a fresh sequence (the database is recreated every run)
 
         var numbers = await Task.WhenAll(Enumerable.Range(0, 30).Select(_ => Task.Run(() =>
             runner.RunAsync((c, tx, ct) => DocumentNumbering.NextAsync(c, tx, node, type, DateTime.UtcNow, ct), "number"))));
@@ -60,7 +60,7 @@ public class FoundationTests(DatabaseFixture db)
     public async Task Rolled_back_number_is_reused()
     {
         var node = await new NodeIdentity(db.Factory, "TK01").GetAsync();
-        var type = "R" + Random.Shared.Next(100, 999);
+        const string type = "R901";
         var now = DateTime.UtcNow;
 
         await using (var connection = await db.Factory.OpenAsync())
@@ -79,7 +79,7 @@ public class FoundationTests(DatabaseFixture db)
     public async Task Number_period_follows_branch_timezone()
     {
         var node = await new NodeIdentity(db.Factory, "TK01").GetAsync();
-        var type = "P" + Random.Shared.Next(100, 999);
+        const string type = "P901";
         var runner = new TransactionRunner(db.Factory);
 
         // 2026-11-30 17:30 UTC is already 2026-12-01 in Jakarta
