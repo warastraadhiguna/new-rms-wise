@@ -196,8 +196,9 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
               (@s1, NULL, 'rounding.cash_step', '"100"'),
               (@s2, NULL, 'rounding.cash_mode', '"nearest"'),
               (@s3, NULL, 'currency.decimals', '0'),
-              (@s4, NULL, 'returns.window_days', '7')
-            """, new { s1 = Id(), s2 = Id(), s3 = Id(), s4 = Id() });
+              (@s4, NULL, 'returns.window_days', '7'),
+              (@s7, NULL, 'stock.expiry_warning_days', '30')
+            """, new { s1 = Id(), s2 = Id(), s3 = Id(), s4 = Id(), s7 = Id() });
         foreach (var (key, value) in ReceiptSettings)
         {
             await Exec("INSERT INTO settings (id, branch_id, setting_key, setting_value) VALUES (@id, NULL, @key, JSON_QUOTE(@value))",
@@ -212,7 +213,7 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
 
     /// <summary>Store admin / supervisor: everything a store needs, but not stock.rebuild (owner's decision).</summary>
     private const string StoreAdminPermissions =
-        """["shift.open","shift.close","shift.share","sale.create","sale.discount.override","sale.line.delete","discount.max:100"]""";
+        """["shift.open","shift.close","shift.share","sale.create","sale.discount.override","sale.line.delete","discount.max:100","stock.view"]""";
 
     /// <summary>Receipt texts, one setting per field like the RMS 2 company table and footerText1/footerText2.</summary>
     private static readonly (string Key, string Value)[] ReceiptSettings =
@@ -286,6 +287,19 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
         changes += await Exec(
             "UPDATE roles SET permissions = @StoreAdminPermissions WHERE code = 'STORE_ADMIN' AND JSON_CONTAINS(permissions, '\"*\"')",
             new { StoreAdminPermissions });
+        // Tahap 2: store admins see the stock screens (stock.view); add it to databases seeded earlier.
+        changes += await Exec(
+            """
+            UPDATE roles SET permissions = JSON_ARRAY_APPEND(permissions, '$', 'stock.view')
+            WHERE code = 'STORE_ADMIN' AND JSON_TYPE(permissions) = 'ARRAY'
+              AND NOT JSON_CONTAINS(permissions, '"stock.view"') AND NOT JSON_CONTAINS(permissions, '"*"')
+            """, new { });
+        changes += await Exec(
+            """
+            INSERT INTO settings (id, branch_id, setting_key, setting_value)
+            SELECT @id, NULL, 'stock.expiry_warning_days', '30' FROM DUAL
+            WHERE NOT EXISTS (SELECT 1 FROM settings WHERE branch_id IS NULL AND setting_key = 'stock.expiry_warning_days')
+            """, new { id = Guid.CreateVersion7() });
         changes += await Exec(
             """
             UPDATE user_roles ur

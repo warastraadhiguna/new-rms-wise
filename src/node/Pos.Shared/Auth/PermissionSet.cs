@@ -19,6 +19,9 @@ public static class Permissions
     /// <summary>Supervisor: approve deleting a line from the cart.</summary>
     public const string SaleLineDelete = "sale.line.delete";
 
+    /// <summary>Store/warehouse admin screens: Stok Total, Cek Stok, Kartu Stok (no purchase prices or cost at a node).</summary>
+    public const string StockView = "stock.view";
+
     /// <summary>Admin: rebuild stock_balances from stock_ledger after the integrity check found a difference.</summary>
     public const string StockRebuild = "stock.rebuild";
 

@@ -90,6 +90,20 @@ public sealed class WpfDialogService(INodeApi api) : IDialogService
 
     public void ShowSaleResult(SaleResult result) => Show(new SaleResultDialog(), new SaleResultViewModel(result));
 
+    public string? AskSaveFile(string suggestedFileName)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = suggestedFileName,
+            DefaultExt = ".xlsx",
+            Filter = "Excel (*.xlsx)|*.xlsx",
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+        var owner = Application.Current?.MainWindow;
+        return (owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner)) == true ? dialog.FileName : null;
+    }
+
     public void ShowReceiptPreview(string message, IReadOnlyList<string> lines) =>
         Show(new ReceiptPreviewDialog(), new ReceiptPreviewViewModel(message, lines));
 

@@ -156,6 +156,14 @@ public interface INodeApi
 
     /// <summary>A stored sale for printing (after payment and F5 reprint); always fresh from the Node Service.</summary>
     Task<SaleDetail> GetSaleAsync(Guid saleId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<StockLocation>> GetStockLocationsAsync(CancellationToken ct = default);
+
+    /// <summary>Form Stok Total: one page of product × location rows.</summary>
+    Task<StockTotalsPage> GetStockTotalsAsync(string? query, Guid? locationId, int offset, int limit, CancellationToken ct = default);
+
+    /// <summary>Form Cek Stok: one product's stock per expiry date.</summary>
+    Task<StockExpiry> GetStockExpiryAsync(Guid productId, Guid? locationId, CancellationToken ct = default);
 }
 
 public sealed record SupervisorCredentials(string Username, string Password);
@@ -189,6 +197,9 @@ public interface IDialogService
 
     /// <summary>The receipt on screen (no printer, or printing failed) with the reason.</summary>
     void ShowReceiptPreview(string message, IReadOnlyList<string> lines);
+
+    /// <summary>"Export to File": where to save; null when cancelled.</summary>
+    string? AskSaveFile(string suggestedFileName);
 }
 
 /// <summary>Switches between the top-level windows.</summary>
@@ -212,6 +223,10 @@ public sealed class SessionState
     public ShiftInfo? Shift { get; set; }
 
     public bool IsLoggedIn => Token is not null;
+
+    /// <summary>The logged-in user has this permission ("*" grants all).</summary>
+    public bool Has(string permission) =>
+        Permissions.Contains(Pos.Shared.Auth.Permissions.All) || Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
 
     public void SetLogin(LoginResult login)
     {
@@ -281,3 +296,46 @@ public sealed record SaleDetail(
     IReadOnlyList<SaleDetailLine> Lines,
     IReadOnlyList<SaleDetailPayment> Payments,
     ReceiptText Receipt);
+
+public sealed record StockLocation(Guid Id, string Code, string Name, string Type, bool IsSellable)
+{
+    public string Display => $"{Code} - {Name}";
+}
+
+/// <summary>One product at one location (Form Stok Total). No purchase price or cost at a node.</summary>
+public sealed record StockTotalRow(
+    Guid ProductId,
+    string Sku,
+    string Name,
+    string? Category,
+    string? Brand,
+    string? ShelfLocation,
+    Guid LocationId,
+    string LocationCode,
+    string LocationName,
+    string BaseUnitCode,
+    bool BaseAllowDecimal,
+    string DisplayUnitCode,
+    decimal DisplayConversion,
+    decimal BaseQty)
+{
+    /// <summary>"1 BOX 14 PCS" (same format as the cashier's Stok column).</summary>
+    public string StockText => Pos.Shared.Units.StockDisplay.Format(BaseQty, DisplayUnitCode, DisplayConversion, BaseUnitCode, BaseAllowDecimal);
+}
+
+public sealed record StockTotalsPage(int Total, int Offset, int Limit, IReadOnlyList<StockTotalRow> Items);
+
+public sealed record StockExpiryRow(Guid LocationId, string LocationCode, DateOnly? ExpiryDate, decimal BaseQty, string Status);
+
+public sealed record StockExpiry(
+    Guid ProductId,
+    string Sku,
+    string Name,
+    string BaseUnitCode,
+    bool BaseAllowDecimal,
+    string DisplayUnitCode,
+    decimal DisplayConversion,
+    bool TrackExpiry,
+    DateOnly Today,
+    int WarningDays,
+    IReadOnlyList<StockExpiryRow> Rows);

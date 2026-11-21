@@ -22,7 +22,7 @@ public sealed record FocusRequest(string Target, int Sequence);
 /// Ctrl+Shift+O unlock delete, F12 cancel with reason, Esc close. Payment (F6) comes in 7b.
 /// The cart is saved locally after every change and restored after a crash.
 /// </summary>
-public sealed partial class SalesViewModel : ObservableObject
+public sealed partial class SalesViewModel : FormTab
 {
     public static readonly TimeSpan SearchDelay = TimeSpan.FromMilliseconds(300);
 
@@ -60,8 +60,10 @@ public sealed partial class SalesViewModel : ObservableObject
         RequestFocus("search");
     }
 
-    /// <summary>Raised when the form should close (Esc).</summary>
-    public event EventHandler? CloseRequested;
+    public override string Title => "Form Penjualan 1";
+
+    /// <summary>The tab's ×: same as Esc (asks for a reason when the cart is not empty).</summary>
+    public override void RequestClose() => EscapeCommand.Execute(null);
 
     /// <summary>The running debounced search (for tests and the UI).</summary>
     public Task PendingSearch { get; private set; } = Task.CompletedTask;
@@ -567,7 +569,7 @@ public sealed partial class SalesViewModel : ObservableObject
         }
 
         ClearTransaction();
-        CloseRequested?.Invoke(this, EventArgs.Empty);
+        RaiseCloseRequested();
     }
 
     /// <summary>Empties the cart and resets everything that belongs to one transaction.</summary>

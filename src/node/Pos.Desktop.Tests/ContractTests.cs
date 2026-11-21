@@ -85,6 +85,32 @@ public class ContractTests
     }
 
     [Fact]
+    public async Task Stock_locations_totals_and_expiry()
+    {
+        _server.Reply(HttpStatusCode.OK, Json("stock-locations"))
+            .Reply(HttpStatusCode.OK, Json("stock-totals"))
+            .Reply(HttpStatusCode.OK, Json("stock-expiry"));
+        var display = Guid.Parse("01a1f74b-7347-7da5-a0a8-c6043f95ad3f");
+        var water = Guid.Parse("01a1f74b-737d-7830-845c-13f0d6777819");
+
+        var locations = await Client().GetStockLocationsAsync();
+        var totals = await Client().GetStockTotalsAsync("AIR-600", display, 0, 200);
+        var expiry = await Client().GetStockExpiryAsync(water, null);
+
+        Assert.Equal(["DISPLAY", "STORAGE"], locations.Select(l => l.Code));
+        Assert.True(locations[0].IsSellable);
+        Assert.Equal($"/api/v1/stock/totals?q=AIR-600&offset=0&limit=200&location_id={display}",
+            _server.Requests[1].Request.RequestUri!.PathAndQuery);
+        var row = Assert.Single(totals.Items);
+        Assert.Equal((1, "AIR-600", "BOX", 24m, 11m), (totals.Total, row.Sku, row.DisplayUnitCode, row.DisplayConversion, row.BaseQty));
+        Assert.Equal("11 PCS", row.StockText);
+        Assert.Equal($"/api/v1/stock/products/{water}/expiry", _server.Requests[2].Request.RequestUri!.PathAndQuery);
+        Assert.Equal((30, new DateOnly(2026, 11, 22)), (expiry.WarningDays, expiry.Today));
+        var bucket = Assert.Single(expiry.Rows);
+        Assert.Equal((new DateOnly(2027, 6, 1), 11m, "ok"), (bucket.ExpiryDate!.Value, bucket.BaseQty, bucket.Status));
+    }
+
+    [Fact]
     public async Task Customer_search()
     {
         _server.Reply(HttpStatusCode.OK, Json("customers"));

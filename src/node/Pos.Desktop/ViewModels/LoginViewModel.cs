@@ -47,6 +47,13 @@ public sealed partial class LoginViewModel(INodeApi api, SessionState session, I
             var login = await api.LoginAsync(username, Password);
             session.SetLogin(login);
 
+            // Only users who sell need a shift; store/warehouse staff without sale.create go straight to the menu.
+            if (!session.Has(Pos.Shared.Auth.Permissions.SaleCreate))
+            {
+                navigator.ShowMain();
+                return;
+            }
+
             var shift = await api.GetCurrentShiftAsync();
             if (shift is null)
             {

@@ -47,6 +47,7 @@ builder.Services.AddSingleton<TransactionRunner>();
 builder.Services.AddSingleton(sp => new StockPostingService(sp.GetRequiredService<TransactionRunner>()));
 builder.Services.AddSingleton<StockIntegrityStatus>();
 builder.Services.AddSingleton<StockIntegrityService>();
+builder.Services.AddSingleton<StockQueryService>();
 builder.Services.AddHostedService<StockIntegrityWorker>();
 builder.Services.AddPosAuth();
 builder.Services.AddSingleton<ShiftService>();

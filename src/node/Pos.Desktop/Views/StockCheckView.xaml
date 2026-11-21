@@ -1,0 +1,83 @@
+<UserControl x:Class="Pos.Desktop.Views.StockCheckView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:infra="clr-namespace:Pos.Desktop.Infrastructure"
+             FontFamily="Tahoma" FontSize="13" Background="#EEF3FA"
+             infra:FocusBehavior.Request="{Binding FocusRequest}">
+    <UserControl.InputBindings>
+        <KeyBinding Key="F1" Command="{Binding PickProductCommand}" />
+        <KeyBinding Key="F8" Command="{Binding ExportCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
+    </UserControl.InputBindings>
+    <UserControl.Resources>
+        <infra:VisibleWhenTextConverter x:Key="VisibleWhenText" />
+        <Style x:Key="Right" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="MinWidth" Value="130" />
+            <Setter Property="Margin" Value="4,0,0,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel Margin="10">
+        <TextBlock DockPanel.Dock="Top" Text="Form Cek Stok" FontSize="24" FontWeight="Bold" Margin="0,4,0,12" />
+
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="240" />
+            </Grid.ColumnDefinitions>
+            <TextBlock VerticalAlignment="Center" Margin="0,0,8,0">
+                <Hyperlink Command="{Binding PickProductCommand}">Barang [F1]</Hyperlink>
+            </TextBlock>
+            <TextBlock x:Name="ProductText" Grid.Column="1" Text="{Binding ProductText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="Lokasi" VerticalAlignment="Center" Margin="16,0,8,0" />
+            <ComboBox x:Name="LocationBox" Grid.Column="3" ItemsSource="{Binding Locations}" DisplayMemberPath="Display"
+                      SelectedItem="{Binding SelectedLocation}" />
+        </Grid>
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="ExportButton" Content="Export to File [F8]" Command="{Binding ExportCommand}" />
+            </StackPanel>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock x:Name="TotalText" Text="{Binding TotalText}" FontWeight="SemiBold" />
+                <TextBlock x:Name="WarningText" Text="{Binding WarningText}" Foreground="#555" FontSize="11" />
+                <TextBlock x:Name="StatusText" Text="{Binding StatusMessage}" Foreground="Firebrick"
+                           Visibility="{Binding StatusMessage, Converter={StaticResource VisibleWhenText}}" />
+            </StackPanel>
+        </DockPanel>
+
+        <DataGrid x:Name="RowsGrid" ItemsSource="{Binding Rows}" infra:FocusBehavior.Key="rows"
+                  AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionMode="Single"
+                  RowHeight="22" RowHeaderWidth="14" GridLinesVisibility="All" Background="White"
+                  HorizontalGridLinesBrush="#D5DCE6" VerticalGridLinesBrush="#D5DCE6">
+            <DataGrid.RowStyle>
+                <!-- RMS 2 colours: near expiry orange, expired red -->
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding State}" Value="NearExpiry">
+                            <Setter Property="Foreground" Value="#B35C00" />
+                            <Setter Property="Background" Value="#FFF4E0" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding State}" Value="Expired">
+                            <Setter Property="Foreground" Value="#B00020" />
+                            <Setter Property="Background" Value="#FDE7EA" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Lokasi" Binding="{Binding LocationCode}" Width="100" />
+                <DataGridTextColumn Header="Tanggal Expired" Binding="{Binding ExpiryText}" Width="130" />
+                <DataGridTextColumn Header="Stok" Binding="{Binding StockText}" Width="140" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Keterangan" Binding="{Binding Marker}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>

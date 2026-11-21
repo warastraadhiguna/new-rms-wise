@@ -103,3 +103,38 @@ public sealed class FileViewSettingsStore(string path) : IViewSettingsStore
 
     public void Save(SalesViewSettings settings) => _file.Save(settings);
 }
+
+/// <summary>A small per-PC preference (e.g. "Atur Tampilan" of an admin form).</summary>
+public interface IPreferenceStore<T> where T : class
+{
+    T Load();
+
+    void Save(T value);
+}
+
+/// <summary>JSON file under <c>%LocalAppData%\PosDesktop</c>; a missing or damaged file gives the default.</summary>
+public sealed class FilePreferenceStore<T>(string fileName, Func<T> defaultValue) : IPreferenceStore<T> where T : class
+{
+    private readonly JsonFileStore<T> _file = new(Path.Combine(JsonFileStore<T>.DefaultFolder, fileName));
+
+    public T Load() => _file.Load() ?? defaultValue();
+
+    public void Save(T value)
+    {
+        try
+        {
+            _file.Save(value);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // a preference that cannot be saved must never stop the work
+        }
+    }
+}
+
+/// <summary>"Atur Tampilan" of Form Stok Total: optional columns (all shown by default).</summary>
+public sealed record StockTotalViewSettings(
+    bool ShowCategory = true,
+    bool ShowBrand = true,
+    bool ShowShelf = true,
+    bool ShowUnit = true);

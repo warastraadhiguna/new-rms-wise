@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Mvc;
 using Pos.NodeService.Auth;
 using Pos.NodeService.Catalog;
 using Pos.NodeService.Customers;
@@ -78,6 +79,16 @@ public static class ApiEndpoints
             .RequireAuthorization(Permissions.SaleCreate);
         api.MapGet("/customers/search", (string? q, CustomerSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
             .RequireAuthorization(Permissions.SaleCreate);
+
+        // Store/warehouse admin screens (read-only). No purchase prices or cost at a node: HPP is computed at HQ.
+        var stock = api.MapGroup("/stock").RequireAuthorization(Permissions.StockView);
+        stock.MapGet("/locations", (StockQueryService service, CancellationToken ct) => service.GetLocationsAsync(ct));
+        stock.MapGet("/totals", (string? q, [FromQuery(Name = "location_id")] Guid? locationId, int? offset, int? limit,
+                StockQueryService service, CancellationToken ct) =>
+            service.GetTotalsAsync(q, locationId, offset ?? 0, limit ?? 200, ct));
+        stock.MapGet("/products/{productId:guid}/expiry", (Guid productId, [FromQuery(Name = "location_id")] Guid? locationId,
+                StockQueryService service, CancellationToken ct) =>
+            service.GetExpiryAsync(productId, locationId, ct));
 
         // Stock integrity (admin). The nightly check never repairs; a person reviews and then rebuilds.
         var stockAdmin = api.MapGroup("/admin/stock").RequireAuthorization(Permissions.StockRebuild);

@@ -62,6 +62,20 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
     public Task<SaleDetail> GetSaleAsync(Guid saleId, CancellationToken ct = default) =>
         SendAsync<SaleDetail>(HttpMethod.Get, $"api/v1/sales/{saleId}", null, authenticated: true, withDevice: false, ct);
 
+    public async Task<IReadOnlyList<StockLocation>> GetStockLocationsAsync(CancellationToken ct = default) =>
+        await SendAsync<List<StockLocation>>(HttpMethod.Get, "api/v1/stock/locations", null, authenticated: true, withDevice: false, ct);
+
+    public Task<StockTotalsPage> GetStockTotalsAsync(string? query, Guid? locationId, int offset, int limit, CancellationToken ct = default) =>
+        SendAsync<StockTotalsPage>(HttpMethod.Get,
+            $"api/v1/stock/totals?q={Uri.EscapeDataString(query ?? "")}&offset={offset}&limit={limit}" +
+            (locationId is { } location ? $"&location_id={location}" : ""),
+            null, authenticated: true, withDevice: false, ct);
+
+    public Task<StockExpiry> GetStockExpiryAsync(Guid productId, Guid? locationId, CancellationToken ct = default) =>
+        SendAsync<StockExpiry>(HttpMethod.Get,
+            $"api/v1/stock/products/{productId}/expiry" + (locationId is { } location ? $"?location_id={location}" : ""),
+            null, authenticated: true, withDevice: false, ct);
+
     public Task<CartCancellationResult> CancelCartAsync(
         Guid id, string reason, decimal totalAmount, IReadOnlyList<CartCancellationLine> lines, CancellationToken ct = default) =>
         SendAsync<CartCancellationResult>(HttpMethod.Post, "api/v1/cart-cancellations",

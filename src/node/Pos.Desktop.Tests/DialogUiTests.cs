@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Pos.Desktop.Infrastructure;
 using Pos.Desktop.Services;
 using Pos.Desktop.ViewModels;
 using Pos.Desktop.Views;
@@ -154,7 +155,8 @@ public class DialogUiTests
         try
         {
             Assert.NotNull(vm.SalesForm);
-            Click(Find<Button>(window, "CloseTabButton"));      // empty cart: closes without asking
+            Find<TabControl>(window, "FormTabs").UpdateLayout();
+            Click(VisualTreeSearch.Descendants<Button>(window).Single(b => b.Name == "CloseTabButton"));   // empty cart: closes without asking
             Assert.Null(vm.SalesForm);
             Assert.True(Find<Button>(window, "OpenSalesButton").IsVisible);
 

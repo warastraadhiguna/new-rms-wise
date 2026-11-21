@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:Pos.Desktop.Views"
         xmlns:vm="clr-namespace:Pos.Desktop.ViewModels"
-        Title="{Binding NodeName, StringFormat=Kasir - {0}}" Width="1366" Height="768"
+        Title="{Binding NodeName, StringFormat=POS - {0}}" Width="1366" Height="768"
         WindowStartupLocation="CenterScreen" WindowState="Maximized"
         FontFamily="Tahoma" FontSize="13" Background="#DCE6F4">
     <Window.InputBindings>
@@ -14,13 +14,33 @@
         <DataTemplate DataType="{x:Type vm:SalesViewModel}">
             <views:SalesView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:StockTotalViewModel}">
+            <views:StockTotalView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:StockCheckViewModel}">
+            <views:StockCheckView />
+        </DataTemplate>
     </Window.Resources>
 
     <DockPanel>
+        <!-- Menu per group as in RMS 2; a group is shown only when the user has its permission. -->
+        <Menu x:Name="MainMenu" DockPanel.Dock="Top" Background="#EEF3FA" Padding="2">
+            <MenuItem x:Name="SalesMenu" Header="_Penjualan"
+                      Visibility="{Binding CanSell, Converter={StaticResource BoolToVisibility}}">
+                <MenuItem x:Name="SalesFormMenuItem" Header="Form Penjualan" InputGestureText="F2"
+                          Command="{Binding OpenSalesFormCommand}" />
+            </MenuItem>
+            <MenuItem x:Name="StockMenu" Header="_Stok"
+                      Visibility="{Binding CanViewStock, Converter={StaticResource BoolToVisibility}}">
+                <MenuItem x:Name="StockTotalMenuItem" Header="Stok Total" Command="{Binding OpenStockTotalCommand}" />
+                <MenuItem x:Name="StockCheckMenuItem" Header="Cek Stok" Command="{Binding OpenStockCheckCommand}" />
+            </MenuItem>
+        </Menu>
+
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
                 <TextBlock>
-                    <Run Text="Kasir:" />
+                    <Run Text="Pengguna:" />
                     <Run Text="{Binding CashierName, Mode=OneWay}" FontWeight="SemiBold" />
                 </TextBlock>
             </StatusBarItem>
@@ -40,34 +60,40 @@
             </StatusBarItem>
         </StatusBar>
 
-        <!-- Tab strip like RMS 2: "Form Penjualan 1 ×" -->
-        <Border DockPanel.Dock="Top" Background="#DCE6F4" Padding="4,4,4,0">
-            <StackPanel Orientation="Horizontal">
-                <Border Background="White" BorderBrush="#9DB3D2" BorderThickness="1,1,1,0" Padding="8,2"
-                        Visibility="{Binding IsSalesFormOpen, Converter={StaticResource BoolToVisibility}}">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Form Penjualan 1" VerticalAlignment="Center" />
-                        <Button x:Name="CloseTabButton" Content="×" Command="{Binding CloseSalesFormCommand}" Margin="8,0,0,0"
-                                Padding="4,0" BorderThickness="0" Background="Transparent" Focusable="False" ToolTip="Tutup [Esc]" />
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </Border>
-
         <Grid>
-            <ContentControl x:Name="FormHost" Content="{Binding SalesForm}" Focusable="False" />
+            <!-- Every form is a tab "Title ×" (RMS 2 style). -->
+            <TabControl x:Name="FormTabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
+                        Background="#EEF3FA" Padding="0" Margin="4,4,4,0"
+                        Visibility="{Binding HasTabs, Converter={StaticResource BoolToVisibility}}">
+                <TabControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                            <Button x:Name="CloseTabButton" Content="×" Margin="8,0,0,0" Padding="4,0" BorderThickness="0"
+                                    Background="Transparent" Focusable="False" ToolTip="Tutup [Esc]"
+                                    Command="{Binding DataContext.CloseTabCommand, RelativeSource={RelativeSource AncestorType=TabControl}}"
+                                    CommandParameter="{Binding}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </TabControl.ItemTemplate>
+            </TabControl>
+
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel.Style>
                     <Style TargetType="StackPanel">
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsSalesFormOpen}" Value="True">
+                            <DataTrigger Binding="{Binding HasTabs}" Value="True">
                                 <Setter Property="Visibility" Value="Collapsed" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
                 </StackPanel.Style>
                 <Button x:Name="OpenSalesButton" Content="Form Penjualan [F2]" Command="{Binding OpenSalesFormCommand}"
-                        Padding="16,6" FontSize="15" />
+                        Padding="16,6" FontSize="15" Margin="0,0,0,8"
+                        Visibility="{Binding CanSell, Converter={StaticResource BoolToVisibility}}" />
+                <Button x:Name="OpenStockTotalButton" Content="Stok Total" Command="{Binding OpenStockTotalCommand}"
+                        Padding="16,6" FontSize="15"
+                        Visibility="{Binding CanViewStock, Converter={StaticResource BoolToVisibility}}" />
             </StackPanel>
         </Grid>
     </DockPanel>

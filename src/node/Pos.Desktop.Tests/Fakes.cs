@@ -139,6 +139,38 @@ public sealed class FakeNodeApi : INodeApi
         Calls.Add($"get-sale:{saleId}");
         return Task.FromResult((OnGetSale ?? (id => Receipts.Detail(id)))(saleId));
     }
+
+    // ---- stock screens ---------------------------------------------------------------------------
+
+    public List<StockLocation> StockLocations { get; } = [Stock.Display, Stock.Storage];
+
+    /// <summary>Rows served by /stock/totals: filtered by SKU/name and location, then paged like the server.</summary>
+    public List<StockTotalRow> StockRows { get; } = [];
+
+    public Func<Guid, Guid?, StockExpiry>? OnStockExpiry { get; set; }
+
+    public Task<IReadOnlyList<StockLocation>> GetStockLocationsAsync(CancellationToken ct = default)
+    {
+        Calls.Add("stock-locations");
+        return Task.FromResult<IReadOnlyList<StockLocation>>(StockLocations);
+    }
+
+    public Task<StockTotalsPage> GetStockTotalsAsync(string? query, Guid? locationId, int offset, int limit, CancellationToken ct = default)
+    {
+        Calls.Add($"stock-totals:{query}:{locationId?.ToString() ?? "all"}:{offset}:{limit}");
+        var q = (query ?? "").Trim();
+        var matching = StockRows
+            .Where(r => locationId is null || r.LocationId == locationId)
+            .Where(r => q.Length == 0 || r.Sku == q || r.Name.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return Task.FromResult(new StockTotalsPage(matching.Count, offset, limit, matching.Skip(offset).Take(limit).ToList()));
+    }
+
+    public Task<StockExpiry> GetStockExpiryAsync(Guid productId, Guid? locationId, CancellationToken ct = default)
+    {
+        Calls.Add($"stock-expiry:{productId}:{locationId?.ToString() ?? "all"}");
+        return Task.FromResult((OnStockExpiry ?? ((id, location) => Stock.Expiry(id, location)))(productId, locationId));
+    }
 }
 
 /// <summary>Scripted answers for the sales screen's dialogs; records what was asked.</summary>
@@ -184,6 +216,11 @@ public sealed class FakeDialogs : IDialogService
     public List<(string Message, IReadOnlyList<string> Lines)> Previews { get; } = [];
 
     public void ShowReceiptPreview(string message, IReadOnlyList<string> lines) { Asked.Add("receipt-preview"); Previews.Add((message, lines)); }
+
+    /// <summary>Path returned by "Export to File"; null = the cashier cancelled the save dialog.</summary>
+    public string? SaveFilePath { get; set; }
+
+    public string? AskSaveFile(string suggestedFileName) { Asked.Add($"save-file:{suggestedFileName}"); return SaveFilePath; }
 }
 
 public sealed class MemoryCartStore : ICartStore
@@ -303,4 +340,31 @@ public static class Receipts
             ? new SaleDetailPayment("CASH", "TUNAI", true, false, 19500m, 20000m, 500m, null)
             : new SaleDetailPayment("QRIS", "QRIS", false, false, 19500m, null, null, "REF1")],
         new ReceiptText("TOKO DEV", "Jl. Merdeka No. 1", null, null, "Terimakasih Atas Kunjungannya", null));
+}
+
+public sealed class MemoryPreferenceStore<T>(T initial) : IPreferenceStore<T> where T : class
+{
+    public T Value { get; set; } = initial;
+    public T Load() => Value;
+    public void Save(T value) => Value = value;
+}
+
+/// <summary>Sample stock data for the admin screens.</summary>
+public static class Stock
+{
+    public static readonly StockLocation Display = new(Guid.Parse("01930000-0000-7000-8000-0000000000a1"), "DISPLAY", "Display", "DISPLAY", true);
+    public static readonly StockLocation Storage = new(Guid.Parse("01930000-0000-7000-8000-0000000000a2"), "STORAGE", "Gudang toko", "STORAGE", false);
+
+    public static StockTotalRow Row(string sku, string name, decimal baseQty, StockLocation? location = null, string displayUnit = "BOX",
+        decimal conversion = 24m, Guid? productId = null) =>
+        new(productId ?? Guid.CreateVersion7(), sku, name, "Minuman", "Merek X", "Rak A", (location ?? Display).Id, (location ?? Display).Code,
+            (location ?? Display).Name, "PCS", false, displayUnit, conversion, baseQty);
+
+    public static StockExpiry Expiry(Guid productId, Guid? locationId) => new(
+        productId, "AIR-600", "Air mineral 600 ml", "PCS", false, "BOX", 24m, true, new DateOnly(2026, 11, 22), 30,
+        [
+            new StockExpiryRow(Display.Id, "DISPLAY", new DateOnly(2026, 11, 19), 2m, "expired"),
+            new StockExpiryRow(Display.Id, "DISPLAY", new DateOnly(2026, 12, 2), 30m, "near_expiry"),
+            new StockExpiryRow(Display.Id, "DISPLAY", new DateOnly(2027, 6, 1), 48m, "ok"),
+        ]);
 }

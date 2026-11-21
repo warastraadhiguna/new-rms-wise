@@ -47,7 +47,7 @@ public static class AuthSetup
 
         services.AddAuthorization(options =>
         {
-            foreach (var permission in new[] { Permissions.ShiftOpen, Permissions.ShiftClose, Permissions.SaleCreate, Permissions.StockRebuild })
+            foreach (var permission in new[] { Permissions.ShiftOpen, Permissions.ShiftClose, Permissions.SaleCreate, Permissions.StockRebuild, Permissions.StockView })
             {
                 options.AddPolicy(permission, policy => policy.RequireAuthenticatedUser()
                     .RequireAssertion(context => context.User.HasPermission(permission)));

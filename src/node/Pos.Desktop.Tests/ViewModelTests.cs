@@ -47,6 +47,22 @@ public class LoginViewModelTests
     }
 
     [Fact]
+    public async Task User_without_sale_create_goes_straight_to_the_main_window_without_a_shift()
+    {
+        _api.OnLogin = (_, _) => Samples.LoginWith("stock.view");
+        var vm = Vm();
+        vm.Username = "gudang1";
+        vm.Password = "rahasia";
+
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal(["login:gudang1"], _api.Calls);                // no shift check
+        Assert.Equal(["main"], _navigator.Shown);
+        Assert.Null(_session.Shift);
+        Assert.Equal("", vm.Password);
+    }
+
+    [Fact]
     public async Task Login_without_open_shift_goes_to_open_shift()
     {
         _api.OnLogin = (_, _) => Samples.Login();

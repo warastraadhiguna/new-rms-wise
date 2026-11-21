@@ -54,7 +54,15 @@ public partial class App : Application
             sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<SessionState>(), sp.GetRequiredService<IDialogService>(),
             sp.GetRequiredService<ICartStore>(), sp.GetRequiredService<IViewSettingsStore>(), sp.GetRequiredService<ReceiptService>()));
         services.AddTransient<Func<SalesViewModel>>(sp => () => sp.GetRequiredService<SalesViewModel>());
-        services.AddTransient(sp => new MainViewModel(sp.GetRequiredService<SessionState>(), sp.GetRequiredService<Func<SalesViewModel>>()));
+        services.AddSingleton<IPreferenceStore<StockTotalViewSettings>>(_ =>
+            new FilePreferenceStore<StockTotalViewSettings>("stock-total-view.json", () => new StockTotalViewSettings()));
+        services.AddTransient(sp => new StockTotalViewModel(
+            sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<IPreferenceStore<StockTotalViewSettings>>()));
+        services.AddTransient(sp => new StockCheckViewModel(sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>()));
+        services.AddTransient(sp => new MainViewModel(sp.GetRequiredService<SessionState>(), new FormFactories(
+            Sales: sp.GetRequiredService<Func<SalesViewModel>>(),
+            StockTotal: () => sp.GetRequiredService<StockTotalViewModel>(),
+            StockCheck: () => sp.GetRequiredService<StockCheckViewModel>())));
         services.AddTransient<LoginWindow>();
         services.AddTransient<OpenShiftWindow>();
         services.AddTransient<MainWindow>();
