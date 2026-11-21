@@ -256,7 +256,7 @@ public sealed partial class StockCardViewModel : FormTab
                 ["Tanggal", "Jenis Dokumen", "No Dokumen", "Oleh", "Lokasi", "Tanggal Expired", "Masuk", "Keluar", "Saldo"],
                 lines.Select(l => (IReadOnlyList<object?>)
                 [
-                    l.IsOpening ? null : l.TimeText, l.DocLabel, l.DocNumber, l.UserName, l.LocationCode,
+                    l.LocalTime, l.DocLabel, l.DocNumber, l.UserName, l.LocationCode,
                     l.ExpiryDate, l.IsOpening ? null : l.QtyIn, l.IsOpening ? null : l.QtyOut, l.Balance,
                 ]));
             StatusMessage = $"{(lines.Count - 1).ToString("#,0", Indonesian)} pergerakan disimpan ke {path}.";

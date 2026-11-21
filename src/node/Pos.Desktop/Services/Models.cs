@@ -160,7 +160,8 @@ public interface INodeApi
     Task<IReadOnlyList<StockLocation>> GetStockLocationsAsync(CancellationToken ct = default);
 
     /// <summary>Form Stok Total: one page of product × location rows.</summary>
-    Task<StockTotalsPage> GetStockTotalsAsync(string? query, Guid? locationId, int offset, int limit, CancellationToken ct = default);
+    Task<StockTotalsPage> GetStockTotalsAsync(
+        string? query, Guid? locationId, int offset, int limit, CancellationToken ct = default, bool includeEmpty = false);
 
     /// <summary>Form Cek Stok: one product's stock per expiry date.</summary>
     Task<StockExpiry> GetStockExpiryAsync(Guid productId, Guid? locationId, CancellationToken ct = default);

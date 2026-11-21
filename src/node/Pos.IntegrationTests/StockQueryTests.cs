@@ -118,6 +118,33 @@ public class StockQueryTests(DatabaseFixture db) : IAsyncLifetime
     }
 
     [DatabaseFact]
+    public async Task Include_empty_lists_every_active_product_per_location_with_zero_stock()
+    {
+        var marker = Guid.NewGuid().ToString("N")[..8];
+        var stocked = await db.CreateSellableProductAsync(1000m, name: $"Ada stok {marker}", stock: [(null, 4m)]);
+        var never = await db.CreateSellableProductAsync(1000m, name: $"Belum pernah {marker}");
+        var inactive = await db.CreateSellableProductAsync(1000m, name: $"Nonaktif {marker}");
+        await ExecAsync("UPDATE products SET status = 'INACTIVE' WHERE id = @ProductId", new { inactive.ProductId });
+        var token = await ViewerTokenAsync();
+
+        var normal = await TotalsAsync(token, $"?q={marker}");
+        var withEmpty = await TotalsAsync(token, $"?q={marker}&include_empty=true");
+        var storageOnly = await TotalsAsync(token, $"?q={marker}&include_empty=true&location_id={db.LocationB}");
+
+        Assert.Equal([(stocked.ProductId, "DISPLAY", 4m)],
+            normal.GetProperty("items").EnumerateArray().Select(r => (r.Id("product_id"), r.Str("location_code"), r.Dec("base_qty"))));
+        var rows = withEmpty.GetProperty("items").EnumerateArray()
+            .Select(r => (r.Id("product_id"), r.Str("location_code"), r.Dec("base_qty"))).ToList();
+        Assert.Equal(4, withEmpty.GetProperty("total").GetInt32());                // 2 active products x 2 locations
+        Assert.Contains((stocked.ProductId, "DISPLAY", 4m), rows);
+        Assert.Contains((stocked.ProductId, "STORAGE", 0m), rows);
+        Assert.Contains((never.ProductId, "DISPLAY", 0m), rows);
+        Assert.Contains((never.ProductId, "STORAGE", 0m), rows);
+        Assert.DoesNotContain(rows, r => r.Item1 == inactive.ProductId);          // inactive without stock stays hidden
+        Assert.Equal(["STORAGE", "STORAGE"], storageOnly.GetProperty("items").EnumerateArray().Select(r => r.Str("location_code")));
+    }
+
+    [DatabaseFact]
     public async Task Totals_are_paged()
     {
         var marker = Guid.NewGuid().ToString("N")[..8];

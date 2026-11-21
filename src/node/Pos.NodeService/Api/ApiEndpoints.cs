@@ -86,8 +86,9 @@ public static class ApiEndpoints
         var stock = api.MapGroup("/stock").RequireAuthorization(Permissions.StockView);
         stock.MapGet("/locations", (StockQueryService service, CancellationToken ct) => service.GetLocationsAsync(ct));
         stock.MapGet("/totals", (string? q, [FromQuery(Name = "location_id")] Guid? locationId, int? offset, int? limit,
+                [FromQuery(Name = "include_empty")] bool? includeEmpty,
                 StockQueryService service, CancellationToken ct) =>
-            service.GetTotalsAsync(q, locationId, offset ?? 0, limit ?? 200, ct));
+            service.GetTotalsAsync(q, locationId, offset ?? 0, limit ?? 200, ct, includeEmpty ?? false));
         stock.MapGet("/products/{productId:guid}/expiry", (Guid productId, [FromQuery(Name = "location_id")] Guid? locationId,
                 StockQueryService service, CancellationToken ct) =>
             service.GetExpiryAsync(productId, locationId, ct));

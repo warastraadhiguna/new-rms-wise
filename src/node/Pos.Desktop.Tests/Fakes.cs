@@ -155,11 +155,15 @@ public sealed class FakeNodeApi : INodeApi
         return Task.FromResult<IReadOnlyList<StockLocation>>(StockLocations);
     }
 
-    public Task<StockTotalsPage> GetStockTotalsAsync(string? query, Guid? locationId, int offset, int limit, CancellationToken ct = default)
+    /// <summary>Extra zero-stock rows, served only with include_empty.</summary>
+    public List<StockTotalRow> EmptyStockRows { get; } = [];
+
+    public Task<StockTotalsPage> GetStockTotalsAsync(
+        string? query, Guid? locationId, int offset, int limit, CancellationToken ct = default, bool includeEmpty = false)
     {
-        Calls.Add($"stock-totals:{query}:{locationId?.ToString() ?? "all"}:{offset}:{limit}");
+        Calls.Add($"stock-totals:{query}:{locationId?.ToString() ?? "all"}:{offset}:{limit}" + (includeEmpty ? ":empty" : ""));
         var q = (query ?? "").Trim();
-        var matching = StockRows
+        var matching = StockRows.Concat(includeEmpty ? EmptyStockRows : [])
             .Where(r => locationId is null || r.LocationId == locationId)
             .Where(r => q.Length == 0 || r.Sku == q || r.Name.Contains(q, StringComparison.OrdinalIgnoreCase))
             .ToList();

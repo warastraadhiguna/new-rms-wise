@@ -86,6 +86,9 @@ public sealed partial class StockTotalViewModel : FormTab
     [ObservableProperty] private bool _showShelf;
     [ObservableProperty] private bool _showUnit;
 
+    /// <summary>"Tampilkan barang tanpa stok" (off by default, not remembered): every active product per location.</summary>
+    [ObservableProperty] private bool _includeEmpty;
+
     /// <summary>"Menampilkan 500 dari 1.234 baris".</summary>
     public string CountText => Rows.Count == Total
         ? $"{Total.ToString("#,0", Indonesian)} baris"
@@ -94,6 +97,8 @@ public sealed partial class StockTotalViewModel : FormTab
     partial void OnSearchTextChanged(string value) => ScheduleReload(debounce: true);
 
     partial void OnSelectedLocationChanged(LocationOption value) => ScheduleReload(debounce: false);
+
+    partial void OnIncludeEmptyChanged(bool value) => ScheduleReload(debounce: false);
 
     partial void OnShowCategoryChanged(bool value) => SaveViewSettings();
     partial void OnShowBrandChanged(bool value) => SaveViewSettings();
@@ -131,7 +136,7 @@ public sealed partial class StockTotalViewModel : FormTab
             if (token.IsCancellationRequested)
                 return;
             IsBusy = true;
-            var page = await _api.GetStockTotalsAsync(SearchText.Trim(), SelectedLocation.Id, 0, PageSize, token);
+            var page = await _api.GetStockTotalsAsync(SearchText.Trim(), SelectedLocation.Id, 0, PageSize, token, IncludeEmpty);
             if (token.IsCancellationRequested)
                 return;
 
@@ -185,7 +190,7 @@ public sealed partial class StockTotalViewModel : FormTab
             var rows = new List<StockTotalRow>();
             for (var offset = 0; ; offset += ExportPageSize)
             {
-                var page = await _api.GetStockTotalsAsync(SearchText.Trim(), SelectedLocation.Id, offset, ExportPageSize);
+                var page = await _api.GetStockTotalsAsync(SearchText.Trim(), SelectedLocation.Id, offset, ExportPageSize, includeEmpty: IncludeEmpty);
                 rows.AddRange(page.Items);
                 if (page.Items.Count == 0 || rows.Count >= page.Total)
                     break;

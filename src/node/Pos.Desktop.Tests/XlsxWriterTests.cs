@@ -1,12 +1,15 @@
-using System.IO.Compression;
-using System.Xml.Linq;
+using System.Globalization;
+using ClosedXML.Excel;
 using Pos.Desktop.Services;
 
 namespace Pos.Desktop.Tests;
 
+/// <summary>One non-empty cell read back from an exported workbook.</summary>
+/// <param name="Text">Text as written; numbers in invariant culture ("2.5"); dates as shown in Excel ("02/12/2026").</param>
+public sealed record XlsxCell(string Ref, string Text, bool IsNumber, bool IsDate, bool IsBold);
+
 public class XlsxWriterTests : IDisposable
 {
-    private static readonly XNamespace Main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "pos-xlsx-tests", Guid.NewGuid().ToString("N"));
 
     public void Dispose()
@@ -15,72 +18,111 @@ public class XlsxWriterTests : IDisposable
             Directory.Delete(_dir, recursive: true);
     }
 
-    /// <summary>Cells of the sheet as (reference, type, style, text) by row.</summary>
-    public static List<List<(string Ref, string? Type, string? Style, string Text)>> ReadSheet(string path)
+    /// <summary>The used cells of the first sheet, row by row (empty cells skipped), read with ClosedXML.</summary>
+    public static List<List<XlsxCell>> ReadSheet(string path)
     {
-        using var zip = ZipFile.OpenRead(path);
-        using var stream = zip.GetEntry("xl/worksheets/sheet1.xml")!.Open();
-        var sheet = XDocument.Load(stream);
-        return sheet.Descendants(Main + "row").Select(row => row.Elements(Main + "c").Select(c => (
-            (string)c.Attribute("r")!,
-            (string?)c.Attribute("t"),
-            (string?)c.Attribute("s"),
-            c.Attribute("t")?.Value == "inlineStr" ? (string)c.Element(Main + "is")!.Element(Main + "t")! : (string)c.Element(Main + "v")!)).ToList()).ToList();
+        using var workbook = new XLWorkbook(path);
+        var sheet = workbook.Worksheet(1);
+        return sheet.RowsUsed().Select(row => row.CellsUsed().Select(cell =>
+        {
+            var value = cell.Value;
+            var text = value.IsNumber ? value.GetNumber().ToString(CultureInfo.InvariantCulture)
+                : value.IsDateTime ? value.GetDateTime().ToString(
+                    cell.Style.DateFormat.Format.Contains("HH", StringComparison.Ordinal) ? XlsxWriter.DateTimeFormat : XlsxWriter.DateFormat,
+                    CultureInfo.InvariantCulture)
+                : cell.GetString();
+            return new XlsxCell(cell.Address.ToString()!, text, value.IsNumber, value.IsDateTime, cell.Style.Font.Bold);
+        }).ToList()).ToList();
+    }
+
+    private string PathFor(string name)
+    {
+        Directory.CreateDirectory(_dir);
+        return Path.Combine(_dir, name);
     }
 
     [Fact]
-    public void Writes_a_workbook_excel_can_open_with_bold_header_text_and_numbers()
+    public void Header_is_bold_and_frozen_text_stays_text_and_numbers_are_numbers()
     {
-        Directory.CreateDirectory(_dir);
-        var path = Path.Combine(_dir, "stok.xlsx");
+        var path = PathFor("stok.xlsx");
 
         XlsxWriter.Write(path, "Stok Total", ["Kode Barang", "Nama Barang", "Stok", "Jumlah"],
             [
                 ["AIR-600", "Air mineral 600 ml", "1 BOX 14 PCS", 38m],
-                ["BERAS-KG", "Beras <curah> & \"premium\"", "2,5", 2.5m],
+                ["0001", "=SUM(A1:A2)", "2,5", 2.5m],
                 ["X", null, "0", 0],
             ]);
 
-        using (var zip = ZipFile.OpenRead(path))
-        {
-            Assert.NotNull(zip.GetEntry("[Content_Types].xml"));
-            Assert.NotNull(zip.GetEntry("xl/workbook.xml"));
-            Assert.NotNull(zip.GetEntry("xl/styles.xml"));
-            using var workbook = zip.GetEntry("xl/workbook.xml")!.Open();
-            Assert.Equal("Stok Total", (string)XDocument.Load(workbook).Descendants(Main + "sheet").Single().Attribute("name")!);
-        }
-
         var rows = ReadSheet(path);
         Assert.Equal(4, rows.Count);
-        Assert.All(rows[0], c => Assert.Equal("1", c.Style));                      // bold header
+        Assert.All(rows[0], c => Assert.True(c.IsBold));
         Assert.Equal(["Kode Barang", "Nama Barang", "Stok", "Jumlah"], rows[0].Select(c => c.Text));
-        Assert.Equal(("D2", (string?)null, "38"), (rows[1][3].Ref, rows[1][3].Type, rows[1][3].Text));   // a real number
-        Assert.Equal("Beras <curah> & \"premium\"", rows[2][1].Text);              // escaped and read back
+        Assert.Equal(("D2", "38", true), (rows[1][3].Ref, rows[1][3].Text, rows[1][3].IsNumber));
+        Assert.False(rows[1][0].IsBold);
+        Assert.Equal("0001", rows[2][0].Text);                                     // leading zeros kept: text, not a number
+        Assert.False(rows[2][0].IsNumber);
+        Assert.Equal("=SUM(A1:A2)", rows[2][1].Text);                              // never turned into a formula
         Assert.Equal("2.5", rows[2][3].Text);
         Assert.Equal(["A4", "C4", "D4"], rows[3].Select(c => c.Ref));               // empty cell skipped
         Assert.False(File.Exists(path + ".tmp"));
+
+        using var workbook = new XLWorkbook(path);
+        Assert.Equal("Stok Total", workbook.Worksheet(1).Name);
+        Assert.Equal(1, workbook.Worksheet(1).SheetView.SplitRow);                 // header frozen
     }
 
-    [Theory]
-    [InlineData(0, "A")]
-    [InlineData(25, "Z")]
-    [InlineData(26, "AA")]
-    [InlineData(27, "AB")]
-    [InlineData(701, "ZZ")]
-    [InlineData(702, "AAA")]
-    public void Column_names(int index, string expected) => Assert.Equal(expected, XlsxWriter.ColumnName(index));
+    [Fact]
+    public void Special_characters_round_trip()
+    {
+        var path = PathFor("khusus.xlsx");
+        const string special = "Beras <curah> & \"premium\" 'asli' — kualitas №1 · 日本 · emoji 🍚";
+
+        XlsxWriter.Write(path, "Khusus", ["Nama"], [[special], ["baris\nbaru\tdan tab"], ["kontrol\u0001\u001Fdibuang"]]);
+
+        var rows = ReadSheet(path);
+        Assert.Equal(special, rows[1][0].Text);
+        Assert.Equal("baris\nbaru\tdan tab", rows[2][0].Text);
+        Assert.Equal("kontroldibuang", rows[3][0].Text);
+    }
 
     [Fact]
-    public void Dates_are_written_as_indonesian_text_and_bad_sheet_names_are_cleaned()
+    public void Large_and_small_numbers_round_trip()
     {
-        Directory.CreateDirectory(_dir);
-        var path = Path.Combine(_dir, "cek.xlsx");
+        var path = PathFor("angka.xlsx");
 
-        XlsxWriter.Write(path, "Cek/Stok:[1]", ["Tanggal"], [[new DateOnly(2026, 12, 2)]]);
+        XlsxWriter.Write(path, "Angka", ["Nilai"],
+            [[99999999890000m], [1563125000m], [-26m], [0.0001m], [12345.6789m], [int.MaxValue], [999_999_999_999_999L]]);
 
-        Assert.Equal("02/12/2026", ReadSheet(path)[1][0].Text);
-        using var zip = ZipFile.OpenRead(path);
-        using var workbook = zip.GetEntry("xl/workbook.xml")!.Open();
-        Assert.Equal("CekStok1", (string)XDocument.Load(workbook).Descendants(Main + "sheet").Single().Attribute("name")!);
+        var values = ReadSheet(path).Skip(1).Select(r => decimal.Parse(r[0].Text, NumberStyles.Float, CultureInfo.InvariantCulture)).ToList();
+        // Excel stores numbers as doubles: up to 15 significant digits round-trip exactly (store quantities are far below).
+        Assert.Equal([99999999890000m, 1563125000m, -26m, 0.0001m, 12345.6789m, int.MaxValue, 999_999_999_999_999m], values);
+        Assert.All(ReadSheet(path).Skip(1), r => Assert.True(r[0].IsNumber));
+    }
+
+    [Fact]
+    public void Dates_and_date_times_are_real_excel_dates_shown_the_indonesian_way()
+    {
+        var path = PathFor("tanggal.xlsx");
+
+        XlsxWriter.Write(path, "Tanggal", ["Tanggal", "Waktu"], [[new DateOnly(2026, 12, 2), new DateTime(2026, 11, 20, 9, 5, 0)]]);
+
+        var row = ReadSheet(path)[1];
+        Assert.Equal(("02/12/2026", true), (row[0].Text, row[0].IsDate));
+        Assert.Equal(("20/11/2026 09:05", true), (row[1].Text, row[1].IsDate));
+        using var workbook = new XLWorkbook(path);
+        Assert.Equal(XlsxWriter.DateFormat, workbook.Worksheet(1).Cell("A2").Style.DateFormat.Format);
+    }
+
+    [Fact]
+    public void Bad_sheet_names_are_cleaned_and_existing_files_are_replaced()
+    {
+        var path = PathFor("cek.xlsx");
+        File.WriteAllText(path, "lama");
+
+        XlsxWriter.Write(path, "Cek/Stok:[1]", ["A"], [["x"]]);
+
+        using var workbook = new XLWorkbook(path);
+        Assert.Equal("CekStok1", workbook.Worksheet(1).Name);
+        Assert.Equal("x", workbook.Worksheet(1).Cell("A2").GetString());
     }
 }

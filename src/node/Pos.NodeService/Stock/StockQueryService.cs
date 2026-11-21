@@ -69,10 +69,12 @@ public sealed class StockQueryService(DbConnectionFactory connections, NodeIdent
     }
 
     /// <summary>
-    /// Every product that has stock rows at a location of this node, one row per product and location, sorted by
-    /// name. <paramref name="query"/>: exact barcode or SKU, or every word in the name. Paged (max 1000 per page).
+    /// One row per product and location of this node, sorted by name. By default only pairs that have stock rows;
+    /// with <paramref name="includeEmpty"/> also every active product at every (selected) location, stock 0 or never
+    /// recorded. <paramref name="query"/>: exact barcode or SKU, or every word in the name. Paged (max 1000 per page).
     /// </summary>
-    public async Task<StockTotalsPage> GetTotalsAsync(string? query, Guid? locationId, int offset, int limit, CancellationToken ct = default)
+    public async Task<StockTotalsPage> GetTotalsAsync(
+        string? query, Guid? locationId, int offset, int limit, CancellationToken ct = default, bool includeEmpty = false)
     {
         offset = Math.Max(0, offset);
         limit = Math.Clamp(limit <= 0 ? 200 : limit, 1, MaxPageSize);
@@ -82,28 +84,31 @@ public sealed class StockQueryService(DbConnectionFactory connections, NodeIdent
         var parameters = new DynamicParameters(new { nodeId = node.Id, locationId, offset, limit });
         var filter = SearchFilter((query ?? "").Trim(), parameters);
 
+        // products x this node's locations, with the stock of each pair when it has rows
         const string joins =
             """
-            FROM stock_balances sb
-            JOIN locations l ON l.id = sb.location_id AND l.node_id = @nodeId AND l.deleted_at IS NULL
-            JOIN products p ON p.id = sb.product_id
+            FROM products p
+            JOIN locations l ON l.node_id = @nodeId AND l.deleted_at IS NULL AND (@locationId IS NULL OR l.id = @locationId)
+            LEFT JOIN (SELECT location_id, product_id, SUM(base_qty) AS qty FROM stock_balances GROUP BY location_id, product_id) s
+                   ON s.location_id = l.id AND s.product_id = p.id
             """;
-        var where = $"WHERE (@locationId IS NULL OR sb.location_id = @locationId) {filter}";
+        var where = includeEmpty
+            ? $"WHERE (s.product_id IS NOT NULL OR (p.deleted_at IS NULL AND p.status <> 'INACTIVE')) {filter}"
+            : $"WHERE s.product_id IS NOT NULL {filter}";
 
         var total = await c.ExecuteScalarAsync<int>(new CommandDefinition(
-            $"SELECT COUNT(*) FROM (SELECT 1 {joins} {where} GROUP BY sb.product_id, sb.location_id) x", parameters, cancellationToken: ct));
+            $"SELECT COUNT(*) {joins} {where}", parameters, cancellationToken: ct));
 
         var rows = (await c.QueryAsync<TotalRow>(new CommandDefinition(
             $"""
             SELECT p.id AS ProductId, p.sku AS Sku, p.name AS Name, cat.name AS Category, b.name AS Brand,
                    p.shelf_location AS ShelfLocation, l.id AS LocationId, l.code AS LocationCode, l.name AS LocationName,
-                   bu.code AS BaseUnitCode, bu.allow_decimal AS BaseAllowDecimal, SUM(sb.base_qty) AS BaseQty
+                   bu.code AS BaseUnitCode, bu.allow_decimal AS BaseAllowDecimal, COALESCE(s.qty, 0) AS BaseQty
             {joins}
             JOIN units bu ON bu.id = p.base_unit_id
             LEFT JOIN categories cat ON cat.id = p.category_id
             LEFT JOIN brands b ON b.id = p.brand_id
             {where}
-            GROUP BY p.id, p.sku, p.name, cat.name, b.name, p.shelf_location, l.id, l.code, l.name, bu.code, bu.allow_decimal
             ORDER BY p.name, p.sku, l.code
             LIMIT @limit OFFSET @offset
             """, parameters, cancellationToken: ct))).ToList();

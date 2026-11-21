@@ -288,6 +288,28 @@ public class AdminFormsUiTests : IDisposable
     });
 
     [Fact]
+    public void Tampilkan_barang_tanpa_stok_is_off_by_default_and_shows_zero_rows_when_ticked() => WithStockTotal((view, vm) =>
+    {
+        _api.EmptyStockRows.Add(Stock.Row("SABUN-01", "Sabun mandi batang", 0m, Stock.Storage, displayUnit: "PCS", conversion: 1m));
+        var box = Find<CheckBox>(view, "IncludeEmptyBox");
+        Assert.Equal("Tampilkan barang tanpa stok", box.Content);
+        Assert.False(box.IsChecked);
+        Assert.DoesNotContain(_api.Calls, c => c.EndsWith(":empty", StringComparison.Ordinal));
+
+        Toggle(box);
+        DoEvents();
+
+        Assert.Contains("stock-totals::all:0:500:empty", _api.Calls);
+        var names = CellTexts(Find<DataGrid>(view, "RowsGrid"), "Nama Barang");
+        Assert.Contains("Sabun mandi batang", names);
+        Assert.Equal("0", CellTexts(Find<DataGrid>(view, "RowsGrid"), "Stok")[names.IndexOf("Sabun mandi batang")]);
+
+        Toggle(box);
+        DoEvents();
+        Assert.DoesNotContain("Sabun mandi batang", CellTexts(Find<DataGrid>(view, "RowsGrid"), "Nama Barang"));
+    });
+
+    [Fact]
     public void Cancelled_export_writes_nothing() => WithStockTotal((view, _) =>
     {
         _dialogs.SaveFilePath = null;
