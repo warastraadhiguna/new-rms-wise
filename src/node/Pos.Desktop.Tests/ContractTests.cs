@@ -130,6 +130,40 @@ public class ContractTests
     }
 
     [Fact]
+    public async Task Location_transfer_preview_create_list_and_detail()
+    {
+        _server.Reply(HttpStatusCode.OK, Json("transfer-preview"))
+            .Reply(HttpStatusCode.Created, Json("transfer"))
+            .Reply(HttpStatusCode.OK, Json("transfers"))
+            .Reply(HttpStatusCode.OK, Json("transfer"));
+        var display = Guid.Parse("01a1f74b-7347-7da5-a0a8-c6043f95ad3f");
+        var storage = Guid.Parse("01a1f74b-7347-79b5-8954-4d006912d96f");
+        var unit = Guid.Parse("01a1f74b-737d-7577-a6b4-5db0a5317eb3");
+        var id = Guid.Parse("01a1ffdf-366d-7ae1-802b-70f5b9f61437");
+
+        var preview = await Client().PreviewLocationTransferAsync(display, [new LocationTransferLineRequest(unit, 2m)]);
+        var created = await Client().CreateLocationTransferAsync(new CreateLocationTransferRequest(id, display, storage,
+            [new LocationTransferLineRequest(unit, 2m)], "contoh dev"));
+        var list = await Client().GetLocationTransfersAsync(new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 22));
+        var detail = await Client().GetLocationTransferAsync(id);
+
+        var line = Assert.Single(preview.Lines);
+        Assert.Equal((11m, 11m, 0m, 2m), (line.StockAtSource, line.Available, line.Shortage, line.BaseQty));
+        Assert.Equal(new DateOnly(2027, 6, 1), Assert.Single(line.Allocations).ExpiryDate);
+        Assert.Contains("\"from_location_id\":\"" + display, _server.Requests[0].Body);
+        Assert.Contains("\"product_unit_id\":\"" + unit, _server.Requests[1].Body);
+        Assert.Contains("\"qty\":\"2.0000\"", _server.Requests[1].Body);
+        Assert.Equal(("TK01-MT-202611-000001", "DISPLAY", "STORAGE", "Staf Gudang Dev"),
+            (created.Number, created.FromLocationCode, created.ToLocationCode, created.CreatedByName));
+        Assert.Equal(DateTimeKind.Utc, created.TransferredAt.Kind);
+        Assert.Equal("/api/v1/stock/transfers?from=2026-11-01&to=2026-11-22", _server.Requests[2].Request.RequestUri!.PathAndQuery);
+        Assert.Equal(("TK01-MT-202611-000001", 1, "Asia/Jakarta"), (list[0].Number, list[0].LineCount, list[0].TimeZone));
+        var detailLine = Assert.Single(detail.Lines);
+        Assert.Equal(("AIR-600", "PCS", 2m), (detailLine.Sku, detailLine.UnitCode, detailLine.Qty!.Value));
+        Assert.Contains("   2 PCS", TransferDetailText.Lines(detail));
+    }
+
+    [Fact]
     public async Task Customer_search()
     {
         _server.Reply(HttpStatusCode.OK, Json("customers"));

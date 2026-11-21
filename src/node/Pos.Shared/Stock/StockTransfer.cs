@@ -17,6 +17,10 @@ public sealed record StockTransferEntries(IReadOnlyList<StockLedgerEntry> Out, I
     public IReadOnlyList<StockLedgerEntry> All => [.. Out, .. In];
 }
 
+/// <summary>One expiry of a location transfer: its line id, quantity, and the ledger entries out and in.</summary>
+public sealed record StockTransferLine(
+    Guid LineId, DateOnly? ExpiryDate, decimal BaseQty, IReadOnlyList<StockLedgerEntry> Out, IReadOnlyList<StockLedgerEntry> In);
+
 /// <summary>One shipped line (expiry + qty) and how it lands in the destination buckets.</summary>
 public sealed record ReceiptLineAllocation(StockAllocation Shipped, IReadOnlyList<StockAllocation> Allocations);
 
@@ -58,6 +62,41 @@ public static class StockTransfer
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Same as <see cref="Transfer"/>, grouped per FEFO allocation of the source: one line per expiry (a
+    /// <c>location_transfer_lines</c> row) whose out and in ledger entries carry that line's id as <c>DocLineId</c>.
+    /// </summary>
+    public static IReadOnlyList<StockTransferLine> TransferByExpiry(
+        StockTransferRequest request,
+        IReadOnlyDictionary<StockBalanceKey, decimal> balances,
+        DateOnly today,
+        bool trackExpiry,
+        bool allowExpired = false,
+        Func<Guid>? newId = null)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(balances);
+        if (request.FromLocationId == request.ToLocationId)
+            throw new ArgumentException("Source and destination location must differ.", nameof(request));
+        newId ??= Guid.CreateVersion7;
+
+        var shipped = StockAllocator.AllocateOutbound(
+            StockBalances.BucketsFor(balances, request.FromLocationId, request.ProductId),
+            request.BaseQty, trackExpiry, today, allowExpired);
+        var received = AllocateReceipt(
+            StockBalances.BucketsFor(balances, request.ToLocationId, request.ProductId),
+            shipped, trackExpiry);
+
+        return received.Select(r =>
+        {
+            var lineId = newId();
+            var lineRequest = request with { DocLineId = lineId };
+            return new StockTransferLine(lineId, r.Shipped.ExpiryDate, r.Shipped.BaseQty,
+                StockLedgerBuilder.Build(Line(lineRequest, request.FromLocationId), StockDirection.Out, [r.Shipped], newId),
+                StockLedgerBuilder.Build(Line(lineRequest, request.ToLocationId), StockDirection.In, r.Allocations, newId));
+        }).ToList();
     }
 
     /// <summary>

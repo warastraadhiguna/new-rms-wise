@@ -47,11 +47,22 @@ public static class AuthSetup
 
         services.AddAuthorization(options =>
         {
-            foreach (var permission in new[] { Permissions.ShiftOpen, Permissions.ShiftClose, Permissions.SaleCreate, Permissions.StockRebuild, Permissions.StockView })
+            foreach (var permission in new[]
+                     {
+                         Permissions.ShiftOpen, Permissions.ShiftClose, Permissions.SaleCreate, Permissions.StockRebuild,
+                         Permissions.StockView, Permissions.StockTransfer,
+                     })
             {
                 options.AddPolicy(permission, policy => policy.RequireAuthenticatedUser()
                     .RequireAssertion(context => context.User.HasPermission(permission)));
             }
+
+            // Product search: cashiers, stock viewers and transfer staff (warehouse staff do not sell).
+            options.AddPolicy(Policies.ProductLookup, policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+                context.User.HasPermission(Permissions.SaleCreate) || context.User.HasPermission(Permissions.StockView)
+                || context.User.HasPermission(Permissions.StockTransfer)));
+            options.AddPolicy(Policies.StockTransferRead, policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+                context.User.HasPermission(Permissions.StockView) || context.User.HasPermission(Permissions.StockTransfer)));
         });
 
         services.AddSingleton(sp => new UserAccessCache(
@@ -100,4 +111,14 @@ public static class AuthSetup
         Results.Problem(detail: detail, statusCode: status, title: code,
                 extensions: new Dictionary<string, object?> { ["code"] = code })
             .ExecuteAsync(response.HttpContext);
+}
+
+/// <summary>Authorization policies that accept one of several permissions.</summary>
+public static class Policies
+{
+    /// <summary>sale.create, stock.view or stock.transfer.</summary>
+    public const string ProductLookup = "product.lookup";
+
+    /// <summary>stock.view or stock.transfer: Daftar Mutasi Lokasi and its detail.</summary>
+    public const string StockTransferRead = "stock.transfer.read";
 }

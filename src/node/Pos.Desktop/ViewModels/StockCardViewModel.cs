@@ -213,6 +213,21 @@ public sealed partial class StockCardViewModel : FormTab
             return;
         }
 
+        if (line.DocType == StockDocTypes.LocationTransfer)
+        {
+            try
+            {
+                var transfer = await _api.GetLocationTransferAsync(docId);
+                _dialogs.ShowDocumentDetail($"Mutasi Lokasi {transfer.Number}", "Dokumen sumber: mutasi lokasi.",
+                    TransferDetailText.Lines(transfer));
+            }
+            catch (NodeApiException ex)
+            {
+                StatusMessage = ex.Message;
+            }
+            return;
+        }
+
         string[] summary =
         [
             $"Jenis Dokumen : {line.DocLabel}",

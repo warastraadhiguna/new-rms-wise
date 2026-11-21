@@ -23,6 +23,12 @@
         <DataTemplate DataType="{x:Type vm:StockCheckViewModel}">
             <views:StockCheckView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:LocationTransferViewModel}">
+            <views:LocationTransferView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:LocationTransferListViewModel}">
+            <views:LocationTransferListView />
+        </DataTemplate>
     </Window.Resources>
 
     <DockPanel>
@@ -34,9 +40,15 @@
                           Command="{Binding OpenSalesFormCommand}" />
             </MenuItem>
             <MenuItem x:Name="StockMenu" Header="_Stok"
-                      Visibility="{Binding CanViewStock, Converter={StaticResource BoolToVisibility}}">
-                <MenuItem x:Name="StockTotalMenuItem" Header="Stok Total" Command="{Binding OpenStockTotalCommand}" />
-                <MenuItem x:Name="StockCheckMenuItem" Header="Cek Stok" Command="{Binding OpenStockCheckCommand}" />
+                      Visibility="{Binding ShowStockMenu, Converter={StaticResource BoolToVisibility}}">
+                <MenuItem x:Name="StockTotalMenuItem" Header="Stok Total" Command="{Binding OpenStockTotalCommand}"
+                          Visibility="{Binding CanViewStock, Converter={StaticResource BoolToVisibility}}" />
+                <MenuItem x:Name="StockCheckMenuItem" Header="Cek Stok" Command="{Binding OpenStockCheckCommand}"
+                          Visibility="{Binding CanViewStock, Converter={StaticResource BoolToVisibility}}" />
+                <Separator Visibility="{Binding CanViewStock, Converter={StaticResource BoolToVisibility}}" />
+                <MenuItem x:Name="LocationTransferMenuItem" Header="Form Mutasi Lokasi" Command="{Binding OpenLocationTransferCommand}"
+                          Visibility="{Binding CanTransfer, Converter={StaticResource BoolToVisibility}}" />
+                <MenuItem x:Name="LocationTransferListMenuItem" Header="Daftar Mutasi Lokasi" Command="{Binding OpenLocationTransferListCommand}" />
             </MenuItem>
             <MenuItem x:Name="ReportMenu" Header="_Laporan"
                       Visibility="{Binding CanViewStock, Converter={StaticResource BoolToVisibility}}">

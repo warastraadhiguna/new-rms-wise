@@ -1,0 +1,159 @@
+<UserControl x:Class="Pos.Desktop.Views.LocationTransferView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:infra="clr-namespace:Pos.Desktop.Infrastructure"
+             FontFamily="Tahoma" FontSize="13" Background="#EEF3FA"
+             infra:FocusBehavior.Request="{Binding FocusRequest}">
+    <!-- Keys as in Form Penjualan: F1 search popup, F6 save, F8 quantity, Shift+Del delete, Esc close. -->
+    <UserControl.InputBindings>
+        <KeyBinding Key="F1" Command="{Binding OpenProductSearchCommand}" />
+        <KeyBinding Key="F6" Command="{Binding SaveCommand}" />
+        <KeyBinding Key="F8" Command="{Binding ChangeQtyCommand}" />
+        <KeyBinding Key="Delete" Modifiers="Shift" Command="{Binding DeleteLineCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
+    </UserControl.InputBindings>
+    <UserControl.Resources>
+        <infra:VisibleWhenTextConverter x:Key="VisibleWhenText" />
+        <Style x:Key="Right" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="SelectionMode" Value="Single" />
+            <Setter Property="RowHeight" Value="22" />
+            <Setter Property="RowHeaderWidth" Value="14" />
+            <Setter Property="GridLinesVisibility" Value="All" />
+            <Setter Property="HorizontalGridLinesBrush" Value="#D5DCE6" />
+            <Setter Property="VerticalGridLinesBrush" Value="#D5DCE6" />
+            <Setter Property="Background" Value="White" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="MinWidth" Value="130" />
+            <Setter Property="Margin" Value="4,0,0,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel Margin="10">
+        <TextBlock DockPanel.Dock="Top" Text="Form Mutasi Lokasi" FontSize="24" FontWeight="Bold" Margin="0,4,0,12" />
+
+        <!-- Lokasi Asal -> Lokasi Tujuan, Keterangan -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="240" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="240" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Lokasi Asal" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="FromLocationBox" Grid.Column="1" ItemsSource="{Binding Locations}" DisplayMemberPath="Display"
+                      SelectedItem="{Binding FromLocation}" />
+            <TextBlock Grid.Column="2" Text="→  Lokasi Tujuan" VerticalAlignment="Center" Margin="12,0,8,0" />
+            <ComboBox x:Name="ToLocationBox" Grid.Column="3" ItemsSource="{Binding Locations}" DisplayMemberPath="Display"
+                      SelectedItem="{Binding ToLocation}" />
+            <TextBlock Grid.Column="4" Text="Keterangan" VerticalAlignment="Center" Margin="12,0,8,0" />
+            <TextBox x:Name="NotesBox" Grid.Column="5" Padding="2" Text="{Binding NotesText, UpdateSourceTrigger=PropertyChanged}" />
+        </Grid>
+
+        <!-- Cari [F1] ... x [qty] -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="56" />
+            </Grid.ColumnDefinitions>
+            <TextBlock VerticalAlignment="Center" Margin="0,0,6,0">
+                <Hyperlink Command="{Binding OpenProductSearchCommand}">Cari [F1]</Hyperlink>
+            </TextBlock>
+            <TextBox x:Name="SearchBox" Grid.Column="1" Padding="2" infra:FocusBehavior.Key="search"
+                     infra:SearchNavigation.Results="{Binding ElementName=ProductGrid}"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding SearchEnterCommand}" />
+                </TextBox.InputBindings>
+            </TextBox>
+            <TextBlock Grid.Column="2" Text="x" VerticalAlignment="Center" Margin="6,0" />
+            <TextBox x:Name="QtyBox" Grid.Column="3" Padding="2" infra:FocusBehavior.Key="qty"
+                     Text="{Binding QtyText, UpdateSourceTrigger=PropertyChanged}">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding SearchEnterCommand}" />
+                </TextBox.InputBindings>
+            </TextBox>
+        </Grid>
+
+        <DataGrid x:Name="ProductGrid" DockPanel.Dock="Top" Height="130" Margin="0,0,0,8"
+                  ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}">
+            <DataGrid.InputBindings>
+                <KeyBinding Key="Enter" Command="{Binding AddSelectedProductCommand}" />
+                <MouseBinding Gesture="LeftDoubleClick" Command="{Binding AddSelectedProductCommand}" />
+            </DataGrid.InputBindings>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Kode Barang" Binding="{Binding Sku}" Width="110" />
+                <DataGridTextColumn Header="Nama Barang" Binding="{Binding Name}" Width="*" />
+                <DataGridTextColumn Header="Satuan" Binding="{Binding UnitCode}" Width="70" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- bottom: warning, status, buttons -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="SaveButton" Content="Simpan [F6]" Command="{Binding SaveCommand}" IsDefault="False" />
+                <Button x:Name="ChangeQtyButton" Content="Atur Jumlah [F8]" Command="{Binding ChangeQtyCommand}" />
+                <Button x:Name="DeleteButton" Content="Hapus [SHF DEL]" Command="{Binding DeleteLineCommand}" />
+            </StackPanel>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock x:Name="WarningText" Text="{Binding WarningMessage}" Foreground="#B35C00" TextWrapping="Wrap"
+                           Visibility="{Binding WarningMessage, Converter={StaticResource VisibleWhenText}}" />
+                <TextBlock x:Name="StatusText" Text="{Binding StatusMessage}" Foreground="Firebrick" TextWrapping="Wrap"
+                           Visibility="{Binding StatusMessage, Converter={StaticResource VisibleWhenText}}" />
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Lines with the FEFO preview from the source location -->
+        <DataGrid x:Name="LinesGrid" ItemsSource="{Binding Lines}" SelectedItem="{Binding SelectedLine}">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsShort}" Value="True">
+                            <Setter Property="Background" Value="#FFF4E0" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="No" Binding="{Binding No}" Width="40" />
+                <DataGridTextColumn Header="Kode Barang" Binding="{Binding Code}" Width="100" />
+                <DataGridTextColumn Header="Nama Barang" Binding="{Binding Name}" Width="*" />
+                <DataGridTextColumn Header="Qty" Binding="{Binding QtyText}" Width="60" ElementStyle="{StaticResource Right}" />
+                <DataGridTemplateColumn Header="Satuan" Width="80">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="▾" MinWidth="0" Padding="2,0" Margin="0" FontSize="9"
+                                        ToolTip="Ganti satuan" Focusable="False"
+                                        Command="{Binding DataContext.ChangeUnitCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                                <TextBlock Text="{Binding UnitCode}" VerticalAlignment="Center" Margin="2,0" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Stok Asal" Binding="{Binding StockText}" Width="110" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Alokasi Expired (FEFO)" Binding="{Binding AllocationText}" Width="240" />
+                <DataGridTextColumn Header="Keterangan" Binding="{Binding WarningText}" Width="170">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="#B35C00" />
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>

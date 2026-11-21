@@ -17,6 +17,7 @@ public class DatabaseTests(DatabaseFixture db)
         Assert.Contains("0003_cashier_screen.sql", db.Migration.ScriptsApplied);
         Assert.Contains("0004_cart_cancellations.sql", db.Migration.ScriptsApplied);
         Assert.Contains("0005_sale_receipt.sql", db.Migration.ScriptsApplied);
+        Assert.Contains("0006_location_transfer_lines.sql", db.Migration.ScriptsApplied);
 
         await using var connection = await db.Factory.OpenAsync();
         var tables = (await connection.QueryAsync<string>(
@@ -35,7 +36,7 @@ public class DatabaseTests(DatabaseFixture db)
 
         Assert.True(outcome.Successful);
         Assert.Empty(outcome.ScriptsApplied);
-        Assert.Equal("0005_sale_receipt.sql", migrator.GetAppliedScripts().Order().Last());
+        Assert.Equal("0006_location_transfer_lines.sql", migrator.GetAppliedScripts().Order().Last());
     }
 
     [DatabaseFact]

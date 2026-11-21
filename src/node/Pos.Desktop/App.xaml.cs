@@ -60,11 +60,15 @@ public partial class App : Application
             sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<IPreferenceStore<StockTotalViewSettings>>()));
         services.AddTransient(sp => new StockCheckViewModel(sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>()));
         services.AddTransient(sp => new StockCardViewModel(sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>()));
+        services.AddTransient(sp => new LocationTransferViewModel(sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>()));
+        services.AddTransient(sp => new LocationTransferListViewModel(sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>()));
         services.AddTransient(sp => new MainViewModel(sp.GetRequiredService<SessionState>(), new FormFactories(
             Sales: sp.GetRequiredService<Func<SalesViewModel>>(),
             StockTotal: () => sp.GetRequiredService<StockTotalViewModel>(),
             StockCheck: () => sp.GetRequiredService<StockCheckViewModel>(),
-            StockCard: () => sp.GetRequiredService<StockCardViewModel>())));
+            StockCard: () => sp.GetRequiredService<StockCardViewModel>(),
+            LocationTransfer: () => sp.GetRequiredService<LocationTransferViewModel>(),
+            LocationTransferList: () => sp.GetRequiredService<LocationTransferListViewModel>())));
         services.AddTransient<LoginWindow>();
         services.AddTransient<OpenShiftWindow>();
         services.AddTransient<MainWindow>();

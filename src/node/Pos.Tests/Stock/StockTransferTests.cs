@@ -226,4 +226,53 @@ public class StockTransferTests
                 b => Assert.True(b.Value >= 0, $"dated bucket negative {b.Key}: {context}"));
         }
     }
+
+    // ---- per expiry (one location_transfer_lines row each) --------------------------------
+
+    [Fact]
+    public void By_expiry_gives_one_line_per_fefo_allocation_with_its_own_ledger_rows()
+    {
+        var balances = Balances([(From, "2027-03-01", "5"), (From, "2027-01-01", "3")]);
+        var ids = new Queue<Guid>(Enumerable.Range(0, 20).Select(_ => Guid.CreateVersion7()));
+
+        var lines = StockTransfer.TransferByExpiry(Request("5"), balances, Today, trackExpiry: true, newId: ids.Dequeue);
+
+        Assert.Equal([(Day("2027-01-01"), 3m), (Day("2027-03-01"), 2m)], lines.Select(l => (l.ExpiryDate, l.BaseQty)));
+        Assert.All(lines, l =>
+        {
+            Assert.All(l.Out.Concat(l.In), e => Assert.Equal(l.LineId, e.DocLineId));      // ledger points at its line
+            Assert.Equal(l.BaseQty, -l.Out.Sum(e => e.BaseQty));
+            Assert.Equal(l.BaseQty, l.In.Sum(e => e.BaseQty));
+            Assert.All(l.Out, e => Assert.Equal(From, e.LocationId));
+            Assert.All(l.In, e => Assert.Equal(To, e.LocationId));
+        });
+        Assert.Equal(2, lines.Select(l => l.LineId).Distinct().Count());
+    }
+
+    [Fact]
+    public void By_expiry_matches_transfer_and_keeps_totals()
+    {
+        var balances = Balances([(From, "2027-01-01", "3"), (From, "2027-03-01", "5"), (To, null, "-2")]);
+
+        var lines = StockTransfer.TransferByExpiry(Request("10"), balances, Today, trackExpiry: true);
+        var plain = StockTransfer.Transfer(Request("10"), balances, Today, trackExpiry: true);
+
+        Assert.Equal(Shape(plain.Out), Shape(lines.SelectMany(l => l.Out)));
+        Assert.Equal(Shape(plain.In).OrderBy(x => x.Item1 ?? DateOnly.MaxValue).ThenBy(x => x.Item2),
+            Shape(lines.SelectMany(l => l.In)).OrderBy(x => x.Item1 ?? DateOnly.MaxValue).ThenBy(x => x.Item2));
+        Assert.Equal(10m, lines.Sum(l => l.BaseQty));                                         // 3 + 5 dated, 2 from the null bucket (negative)
+        var after = StockBalances.Apply(balances, lines.SelectMany(l => l.Out.Concat(l.In)));
+        Assert.Equal(-2m, after[new(From, Product, null)]);                                  // shortage allowed: source goes negative
+        Assert.Equal(balances.Values.Sum(), after.Values.Sum());                              // nothing created or lost
+    }
+
+    [Fact]
+    public void By_expiry_skips_expired_stock_like_a_sale()
+    {
+        var balances = Balances([(From, "2026-11-01", "4"), (From, "2027-01-01", "3")]);
+
+        var lines = StockTransfer.TransferByExpiry(Request("3"), balances, Today, trackExpiry: true);
+
+        Assert.Equal([(Day("2027-01-01"), 3m)], lines.Select(l => (l.ExpiryDate, l.BaseQty)));
+    }
 }

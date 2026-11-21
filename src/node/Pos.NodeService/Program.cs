@@ -49,6 +49,7 @@ builder.Services.AddSingleton<StockIntegrityStatus>();
 builder.Services.AddSingleton<StockIntegrityService>();
 builder.Services.AddSingleton<StockQueryService>();
 builder.Services.AddSingleton<StockCardService>();
+builder.Services.AddSingleton<LocationTransferService>();
 builder.Services.AddHostedService<StockIntegrityWorker>();
 builder.Services.AddPosAuth();
 builder.Services.AddSingleton<ShiftService>();

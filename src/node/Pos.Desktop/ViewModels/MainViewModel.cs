@@ -11,7 +11,9 @@ public sealed record FormFactories(
     Func<SalesViewModel>? Sales = null,
     Func<StockTotalViewModel>? StockTotal = null,
     Func<StockCheckViewModel>? StockCheck = null,
-    Func<StockCardViewModel>? StockCard = null);
+    Func<StockCardViewModel>? StockCard = null,
+    Func<LocationTransferViewModel>? LocationTransfer = null,
+    Func<LocationTransferListViewModel>? LocationTransferList = null);
 
 /// <summary>
 /// The main window: a menu per group as in RMS 2 (Penjualan, Stok, Laporan: Kartu Stok), shown by permission (sale.create,
@@ -43,6 +45,8 @@ public sealed partial class MainViewModel : ObservableObject
             OpenSalesForm();
         else if (CanViewStock)
             OpenStockTotal();
+        else if (CanTransfer)
+            OpenLocationTransfer();
     }
 
     public string CashierName => _session.User?.FullName ?? "";
@@ -54,8 +58,30 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Menu "Penjualan".</summary>
     public bool CanSell => _session.Has(Permissions.SaleCreate) && _forms.Sales is not null;
 
-    /// <summary>Menus "Stok" and "Laporan".</summary>
+    /// <summary>Stok Total, Cek Stok and the menu "Laporan".</summary>
     public bool CanViewStock => _session.Has(Permissions.StockView);
+
+    /// <summary>Form Mutasi Lokasi.</summary>
+    public bool CanTransfer => _session.Has(Permissions.StockTransfer);
+
+    /// <summary>Menu "Stok" (and Daftar Mutasi Lokasi): stock.view or stock.transfer.</summary>
+    public bool ShowStockMenu => CanViewStock || CanTransfer;
+
+    /// <summary>Menu Stok → Form Mutasi Lokasi (one tab).</summary>
+    [RelayCommand]
+    private void OpenLocationTransfer()
+    {
+        if (CanTransfer && _forms.LocationTransfer is not null)
+            Show(Tabs.OfType<LocationTransferViewModel>().FirstOrDefault() ?? _forms.LocationTransfer());
+    }
+
+    /// <summary>Menu Stok → Daftar Mutasi Lokasi (one tab).</summary>
+    [RelayCommand]
+    private void OpenLocationTransferList()
+    {
+        if (ShowStockMenu && _forms.LocationTransferList is not null)
+            Show(Tabs.OfType<LocationTransferListViewModel>().FirstOrDefault() ?? _forms.LocationTransferList());
+    }
 
     public ObservableCollection<FormTab> Tabs { get; } = [];
 

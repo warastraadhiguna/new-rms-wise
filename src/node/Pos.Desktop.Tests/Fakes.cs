@@ -194,6 +194,80 @@ public sealed class FakeNodeApi : INodeApi
             Rows = card.Rows.Skip(offset).Take(limit).ToList(),
         });
     }
+
+    // ---- location transfers -----------------------------------------------------------------------
+
+    /// <summary>Base stock at the source per product (default 30) for the preview.</summary>
+    public Dictionary<Guid, decimal> SourceStock { get; } = [];
+    public List<(Guid From, IReadOnlyList<LocationTransferLineRequest> Lines)> Previews { get; } = [];
+    public List<CreateLocationTransferRequest> TransferRequests { get; } = [];
+
+    /// <summary>Thrown by the next CreateLocationTransferAsync (then cleared), e.g. a network failure.</summary>
+    public Exception? NextTransferFailure { get; set; }
+    public List<LocationTransferSummary> TransferList { get; } = [];
+
+    public Task<LocationTransferPreview> PreviewLocationTransferAsync(
+        Guid fromLocationId, IReadOnlyList<LocationTransferLineRequest> lines, CancellationToken ct = default)
+    {
+        Calls.Add($"transfer-preview:{fromLocationId}:{lines.Count}");
+        Previews.Add((fromLocationId, lines));
+        var used = new Dictionary<Guid, decimal>();
+        var result = lines.Select((l, i) =>
+        {
+            var product = Catalog.FirstOrDefault(p => p.ProductUnitId == l.ProductUnitId) ?? Samples.Amplop;
+            var baseQty = l.Qty * product.Conversion;
+            var available = Math.Max(0, SourceStock.GetValueOrDefault(product.ProductId, 30m) - used.GetValueOrDefault(product.ProductId));
+            used[product.ProductId] = used.GetValueOrDefault(product.ProductId) + baseQty;
+            var dated = Math.Min(baseQty, available);
+            List<ExpiryQty> allocations = [new(new DateOnly(2026, 12, 2), dated)];
+            if (baseQty > dated)
+                allocations.Add(new ExpiryQty(null, baseQty - dated));
+            return new LocationTransferPreviewLine(i + 1, product.ProductId, l.ProductUnitId, l.Qty, baseQty, "PCS",
+                SourceStock.GetValueOrDefault(product.ProductId, 30m), available, Math.Max(0, baseQty - available), allocations);
+        }).ToList();
+        return Task.FromResult(new LocationTransferPreview(new DateOnly(2026, 11, 22), result));
+    }
+
+    public Task<LocationTransfer> CreateLocationTransferAsync(CreateLocationTransferRequest request, CancellationToken ct = default)
+    {
+        Calls.Add($"transfer-create:{request.Id}");
+        TransferRequests.Add(request);
+        if (NextTransferFailure is { } failure)
+        {
+            NextTransferFailure = null;
+            throw failure;
+        }
+        return Task.FromResult(Transfers.Sample(request.Id) with
+        {
+            FromLocationId = request.FromLocationId,
+            ToLocationId = request.ToLocationId,
+            Notes = request.Notes,
+        });
+    }
+
+    public Task<IReadOnlyList<LocationTransferSummary>> GetLocationTransfersAsync(DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        Calls.Add($"transfers:{from:yyyy-MM-dd}:{to:yyyy-MM-dd}");
+        return Task.FromResult<IReadOnlyList<LocationTransferSummary>>(TransferList);
+    }
+
+    public Task<LocationTransfer> GetLocationTransferAsync(Guid transferId, CancellationToken ct = default)
+    {
+        Calls.Add($"transfer:{transferId}");
+        return Task.FromResult(Transfers.Sample(transferId));
+    }
+}
+
+public static class Transfers
+{
+    /// <summary>TK01-MT-202611-000001: STORAGE → DISPLAY, 2 PAK amplop (20 PCS over two expiry dates).</summary>
+    public static LocationTransfer Sample(Guid id) => new(
+        id, Guid.CreateVersion7(), "TK01-MT-202611-000001", Stock.Storage.Id, "STORAGE", Stock.Display.Id, "DISPLAY",
+        new DateTime(2026, 11, 22, 3, 30, 0, DateTimeKind.Utc), "Asia/Jakarta", "isi etalase", Samples.UserId, "Admin Toko Dev",
+        [
+            new LocationTransferLine(1, Samples.AmplopId, "13589", "2023_amplop lebaran karakter", Samples.AmplopPak.ProductUnitId, "PAK", 2m,
+                "PCS", 20m, [new ExpiryQty(new DateOnly(2026, 12, 2), 12m), new ExpiryQty(null, 8m)]),
+        ]);
 }
 
 /// <summary>Scripted answers for the sales screen's dialogs; records what was asked.</summary>

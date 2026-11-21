@@ -74,17 +74,19 @@ public static class ApiEndpoints
         api.MapGet("/sales/{saleId:guid}", (Guid saleId, SaleDetailService service, CancellationToken ct) => service.GetAsync(saleId, ct))
             .RequireAuthorization(Permissions.SaleCreate);
 
+        // Product lookup is shared by the cashier, the stock screens and Form Mutasi Lokasi.
         api.MapGet("/products/search", (string? q, ProductSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
-            .RequireAuthorization(Permissions.SaleCreate);
+            .RequireAuthorization(Policies.ProductLookup);
         api.MapGet("/products/{productId:guid}/units", (Guid productId, ProductSearchService service, CancellationToken ct) =>
                 service.GetUnitsAsync(productId, ct))
-            .RequireAuthorization(Permissions.SaleCreate);
+            .RequireAuthorization(Policies.ProductLookup);
         api.MapGet("/customers/search", (string? q, CustomerSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
             .RequireAuthorization(Permissions.SaleCreate);
 
         // Store/warehouse admin screens (read-only). No purchase prices or cost at a node: HPP is computed at HQ.
+        api.MapGet("/stock/locations", (StockQueryService service, CancellationToken ct) => service.GetLocationsAsync(ct))
+            .RequireAuthorization(Policies.StockTransferRead);
         var stock = api.MapGroup("/stock").RequireAuthorization(Permissions.StockView);
-        stock.MapGet("/locations", (StockQueryService service, CancellationToken ct) => service.GetLocationsAsync(ct));
         stock.MapGet("/totals", (string? q, [FromQuery(Name = "location_id")] Guid? locationId, int? offset, int? limit,
                 [FromQuery(Name = "include_empty")] bool? includeEmpty,
                 StockQueryService service, CancellationToken ct) =>
@@ -101,6 +103,32 @@ public static class ApiEndpoints
                 return await service.GetAsync(productId, locationId, from ?? new DateOnly(today.Year, today.Month, 1), to ?? today,
                     offset ?? 0, limit ?? 500, ct);
             });
+
+        // Form Mutasi Lokasi (stock.transfer): 201 created, 200 when the same id was already stored (client retry).
+        var transfers = api.MapGroup("/stock/transfers");
+        transfers.MapPost("", async (CreateLocationTransferRequest request, LocationTransferService service, ClaimsPrincipal user,
+                CancellationToken ct) =>
+            {
+                var result = await service.CreateAsync(request, user.UserId(), ct);
+                return result.Replayed
+                    ? Results.Ok(result.Transfer)
+                    : Results.Created($"/api/v1/stock/transfers/{result.Transfer.Id}", result.Transfer);
+            })
+            .RequireAuthorization(Permissions.StockTransfer);
+        transfers.MapPost("/preview", (LocationTransferPreviewRequest request, LocationTransferService service, CancellationToken ct) =>
+                service.PreviewAsync(request, ct))
+            .RequireAuthorization(Permissions.StockTransfer);
+        // Daftar Mutasi Lokasi and the detail (also from the Kartu Stok): branch dates, default this month.
+        transfers.MapGet("", async (DateOnly? from, DateOnly? to, LocationTransferService service, NodeIdentity nodeIdentity,
+                TimeProvider clock, CancellationToken ct) =>
+            {
+                var today = BranchClock.Today(clock.GetUtcNow().UtcDateTime, (await nodeIdentity.GetAsync(ct)).TimeZone);
+                return await service.ListAsync(from ?? new DateOnly(today.Year, today.Month, 1), to ?? today, ct);
+            })
+            .RequireAuthorization(Policies.StockTransferRead);
+        transfers.MapGet("/{transferId:guid}", (Guid transferId, LocationTransferService service, CancellationToken ct) =>
+                service.GetAsync(transferId, ct))
+            .RequireAuthorization(Policies.StockTransferRead);
 
         // Stock integrity (admin). The nightly check never repairs; a person reviews and then rebuilds.
         var stockAdmin = api.MapGroup("/admin/stock").RequireAuthorization(Permissions.StockRebuild);

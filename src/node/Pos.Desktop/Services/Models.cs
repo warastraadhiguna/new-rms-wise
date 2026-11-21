@@ -168,6 +168,18 @@ public interface INodeApi
 
     /// <summary>Kartu Stok: branch dates from..to inclusive, one page of ledger rows.</summary>
     Task<StockCard> GetStockCardAsync(Guid productId, Guid? locationId, DateOnly from, DateOnly to, int offset, int limit, CancellationToken ct = default);
+
+    /// <summary>Form Mutasi Lokasi: store the transfer (201 or the stored one for the same id).</summary>
+    Task<LocationTransfer> CreateLocationTransferAsync(CreateLocationTransferRequest request, CancellationToken ct = default);
+
+    /// <summary>FEFO preview per line from the current stock of the source location.</summary>
+    Task<LocationTransferPreview> PreviewLocationTransferAsync(
+        Guid fromLocationId, IReadOnlyList<LocationTransferLineRequest> lines, CancellationToken ct = default);
+
+    /// <summary>Daftar Mutasi Lokasi: branch dates from..to inclusive, newest first.</summary>
+    Task<IReadOnlyList<LocationTransferSummary>> GetLocationTransfersAsync(DateOnly from, DateOnly to, CancellationToken ct = default);
+
+    Task<LocationTransfer> GetLocationTransferAsync(Guid transferId, CancellationToken ct = default);
 }
 
 public sealed record SupervisorCredentials(string Username, string Password);
@@ -400,3 +412,31 @@ public static class BranchTime
         }
     }
 }
+
+public sealed record LocationTransferLineRequest(Guid ProductUnitId, decimal Qty);
+
+/// <param name="Id">UUID v7 created here; sent again after a network failure so the transfer is stored once.</param>
+public sealed record CreateLocationTransferRequest(
+    Guid Id, Guid FromLocationId, Guid ToLocationId, IReadOnlyList<LocationTransferLineRequest> Lines, string? Notes);
+
+public sealed record ExpiryQty(DateOnly? ExpiryDate, decimal BaseQty);
+
+/// <summary>FEFO preview of one entered line (base units): what saving would take from the source.</summary>
+public sealed record LocationTransferPreviewLine(
+    int LineNo, Guid ProductId, Guid ProductUnitId, decimal Qty, decimal BaseQty, string BaseUnitCode,
+    decimal StockAtSource, decimal Available, decimal Shortage, IReadOnlyList<ExpiryQty> Allocations);
+
+public sealed record LocationTransferPreview(DateOnly Today, IReadOnlyList<LocationTransferPreviewLine> Lines);
+
+public sealed record LocationTransferLine(
+    int LineNo, Guid ProductId, string Sku, string Name, Guid? ProductUnitId, string UnitCode, decimal? Qty,
+    string BaseUnitCode, decimal BaseQty, IReadOnlyList<ExpiryQty> Expiries);
+
+/// <param name="TransferredAt">UTC.</param>
+public sealed record LocationTransfer(
+    Guid Id, Guid NodeId, string Number, Guid FromLocationId, string FromLocationCode, Guid ToLocationId, string ToLocationCode,
+    DateTime TransferredAt, string TimeZone, string? Notes, Guid CreatedBy, string CreatedByName, IReadOnlyList<LocationTransferLine> Lines);
+
+public sealed record LocationTransferSummary(
+    Guid Id, string Number, DateTime TransferredAt, string FromLocationCode, string ToLocationCode, string CreatedByName,
+    int LineCount, string? Notes, string TimeZone);

@@ -20,6 +20,7 @@ public static class DevCredentials
     public const string CashierPassword = "kasir123";
     public const string CashierPin = "123456";
     public const string StoreAdminPassword = "admintoko123";
+    public const string WarehousePassword = "gudang123";
 }
 
 public sealed record DevProduct(string Sku, Guid ProductId, Guid ProductUnitId, string Barcode, decimal Price, bool TrackExpiry);
@@ -115,6 +116,7 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
             INSERT INTO user_roles (id, user_id, role_id, node_id) VALUES
               (@a, @admin, @ownerRole, NULL), (@b, @cashier, @cashierRole, @node), (@c, @storeAdmin, @adminRole, @node)
             """, new { a = Id(), b = Id(), c = Id(), admin, ownerRole, cashier, cashierRole, storeAdmin, adminRole, node });
+        await SeedWarehouseStaffAsync(c, tx, ct);
         await Exec(
             """
             INSERT INTO devices (id, node_id, name, type, fingerprint, public_key, status, approved_by, approved_at) VALUES
@@ -211,9 +213,44 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
     /// <summary>OWNER and HQ_ADMIN only: "*" includes stock.rebuild.</summary>
     private const string FullPermissions = """["*"]""";
 
+    /// <summary>Warehouse staff: stock screens and location transfers, no selling (owner's decision for 9c).</summary>
+    private const string WarehouseStaffPermissions = """["stock.view","stock.transfer"]""";
+
+    /// <summary>
+    /// Role WAREHOUSE_STAFF and the dev user gudang1 (at the first node) when missing. Safe to repeat.
+    /// </summary>
+    private static async Task<int> SeedWarehouseStaffAsync(MySqlConnection c, MySqlTransaction tx, CancellationToken ct)
+    {
+        Task<int> Exec(string sql, object args) => c.ExecuteAsync(new CommandDefinition(sql, args, tx, cancellationToken: ct));
+
+        var changes = await Exec(
+            """
+            INSERT INTO roles (id, code, name, permissions)
+            SELECT @id, 'WAREHOUSE_STAFF', 'Staf gudang', @WarehouseStaffPermissions FROM DUAL
+            WHERE NOT EXISTS (SELECT 1 FROM roles WHERE code = 'WAREHOUSE_STAFF')
+            """, new { id = Guid.CreateVersion7(), WarehouseStaffPermissions });
+
+        var user = Guid.CreateVersion7();
+        if (await Exec(
+                """
+                INSERT INTO users (id, username, password_hash, pin_hash, full_name)
+                SELECT @user, 'gudang1', @hash, NULL, 'Staf Gudang Dev' FROM DUAL
+                WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'gudang1')
+                """, new { user, hash = PasswordHasher.Hash(DevCredentials.WarehousePassword) }) > 0)
+        {
+            changes += 1 + await Exec(
+                """
+                INSERT INTO user_roles (id, user_id, role_id, node_id)
+                SELECT @id, @user, r.id, n.id FROM roles r JOIN nodes n ON n.code = (SELECT MIN(code) FROM nodes)
+                WHERE r.code = 'WAREHOUSE_STAFF'
+                """, new { id = Guid.CreateVersion7(), user });
+        }
+        return changes;
+    }
+
     /// <summary>Store admin / supervisor: everything a store needs, but not stock.rebuild (owner's decision).</summary>
     private const string StoreAdminPermissions =
-        """["shift.open","shift.close","shift.share","sale.create","sale.discount.override","sale.line.delete","discount.max:100","stock.view"]""";
+        """["shift.open","shift.close","shift.share","sale.create","sale.discount.override","sale.line.delete","discount.max:100","stock.view","stock.transfer"]""";
 
     /// <summary>Receipt texts, one setting per field like the RMS 2 company table and footerText1/footerText2.</summary>
     private static readonly (string Key, string Value)[] ReceiptSettings =
@@ -294,6 +331,14 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
             WHERE code = 'STORE_ADMIN' AND JSON_TYPE(permissions) = 'ARRAY'
               AND NOT JSON_CONTAINS(permissions, '"stock.view"') AND NOT JSON_CONTAINS(permissions, '"*"')
             """, new { });
+        // 9c: store admins move stock between locations (stock.transfer); warehouse staff role and dev user.
+        changes += await Exec(
+            """
+            UPDATE roles SET permissions = JSON_ARRAY_APPEND(permissions, '$', 'stock.transfer')
+            WHERE code = 'STORE_ADMIN' AND JSON_TYPE(permissions) = 'ARRAY'
+              AND NOT JSON_CONTAINS(permissions, '"stock.transfer"') AND NOT JSON_CONTAINS(permissions, '"*"')
+            """, new { });
+        changes += await SeedWarehouseStaffAsync(c, tx, ct);
         changes += await Exec(
             """
             INSERT INTO settings (id, branch_id, setting_key, setting_value)

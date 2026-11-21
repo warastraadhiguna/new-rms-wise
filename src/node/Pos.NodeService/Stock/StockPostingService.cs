@@ -98,6 +98,37 @@ public sealed class StockPostingService
             "Stock transfer", cancellationToken);
     }
 
+    /// <summary>
+    /// A location transfer document inside the caller's transaction (no commit, no retry): every request moves one
+    /// product FEFO from its source to its destination, grouped per expiry (one line id per expiry). Requests are
+    /// applied in order, so a product entered twice sees the first move. Returns the lines per request.
+    /// </summary>
+    public static Task<IReadOnlyList<IReadOnlyList<StockTransferLine>>> TransferWithinAsync(
+        MySqlConnection connection, MySqlTransaction transaction, IReadOnlyList<StockTransferRequest> requests,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+
+        return ExecuteWithinAsync(connection, transaction,
+            requests.SelectMany(r => new[] { (r.FromLocationId, r.ProductId), (r.ToLocationId, r.ProductId) }),
+            context =>
+            {
+                var balances = context.Balances;
+                var result = new List<IReadOnlyList<StockTransferLine>>();
+                foreach (var request in requests)
+                {
+                    var lines = StockTransfer.TransferByExpiry(request, balances,
+                        BranchClock.Today(request.OccurredAt, context.TimeZones[request.FromLocationId]),
+                        context.TrackExpiry[request.ProductId]);
+                    balances = StockBalances.Apply(balances, lines.SelectMany(l => l.Out.Concat(l.In)));
+                    result.Add(lines);
+                }
+                return (IReadOnlyList<IReadOnlyList<StockTransferLine>>)result;
+            },
+            result => result.SelectMany(lines => lines).SelectMany(l => l.Out.Concat(l.In)).ToList(),
+            cancellationToken);
+    }
+
     private sealed record PostingContext(
         IReadOnlyDictionary<StockBalanceKey, decimal> Balances,
         IReadOnlyDictionary<Guid, bool> TrackExpiry,

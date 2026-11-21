@@ -22,6 +22,9 @@ public static class Permissions
     /// <summary>Store/warehouse admin screens: Stok Total, Cek Stok, Kartu Stok (no purchase prices or cost at a node).</summary>
     public const string StockView = "stock.view";
 
+    /// <summary>Form Mutasi Lokasi: move stock between locations of this node.</summary>
+    public const string StockTransfer = "stock.transfer";
+
     /// <summary>Admin: rebuild stock_balances from stock_ledger after the integrity check found a difference.</summary>
     public const string StockRebuild = "stock.rebuild";
 

@@ -85,6 +85,22 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
             (locationId is { } location ? $"&location_id={location}" : ""),
             null, authenticated: true, withDevice: false, ct);
 
+    public Task<LocationTransfer> CreateLocationTransferAsync(CreateLocationTransferRequest request, CancellationToken ct = default) =>
+        SendAsync<LocationTransfer>(HttpMethod.Post, "api/v1/stock/transfers", request, authenticated: true, withDevice: false, ct);
+
+    public Task<LocationTransferPreview> PreviewLocationTransferAsync(
+        Guid fromLocationId, IReadOnlyList<LocationTransferLineRequest> lines, CancellationToken ct = default) =>
+        SendAsync<LocationTransferPreview>(HttpMethod.Post, "api/v1/stock/transfers/preview",
+            new { FromLocationId = fromLocationId, Lines = lines }, authenticated: true, withDevice: false, ct);
+
+    public async Task<IReadOnlyList<LocationTransferSummary>> GetLocationTransfersAsync(DateOnly from, DateOnly to, CancellationToken ct = default) =>
+        await SendAsync<List<LocationTransferSummary>>(HttpMethod.Get,
+            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"api/v1/stock/transfers?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}"),
+            null, authenticated: true, withDevice: false, ct);
+
+    public Task<LocationTransfer> GetLocationTransferAsync(Guid transferId, CancellationToken ct = default) =>
+        SendAsync<LocationTransfer>(HttpMethod.Get, $"api/v1/stock/transfers/{transferId}", null, authenticated: true, withDevice: false, ct);
+
     public Task<CartCancellationResult> CancelCartAsync(
         Guid id, string reason, decimal totalAmount, IReadOnlyList<CartCancellationLine> lines, CancellationToken ct = default) =>
         SendAsync<CartCancellationResult>(HttpMethod.Post, "api/v1/cart-cancellations",

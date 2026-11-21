@@ -1,0 +1,60 @@
+<UserControl x:Class="Pos.Desktop.Views.LocationTransferListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:infra="clr-namespace:Pos.Desktop.Infrastructure"
+             FontFamily="Tahoma" FontSize="13" Background="#EEF3FA"
+             infra:FocusBehavior.Request="{Binding FocusRequest}">
+    <UserControl.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
+    </UserControl.InputBindings>
+    <UserControl.Resources>
+        <infra:VisibleWhenTextConverter x:Key="VisibleWhenText" />
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="Margin" Value="12,0,0,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel Margin="10">
+        <TextBlock DockPanel.Dock="Top" Text="Daftar Mutasi Lokasi" FontSize="24" FontWeight="Bold" Margin="0,4,0,12" />
+
+        <StackPanel x:Name="FilterPanel" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <StackPanel.InputBindings>
+                <KeyBinding Key="Enter" Command="{Binding ShowCommand}" />
+            </StackPanel.InputBindings>
+            <TextBlock Text="Dari" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <DatePicker x:Name="FromBox" SelectedDate="{Binding FromDate}" Width="130" />
+            <TextBlock Text="Sampai" VerticalAlignment="Center" Margin="12,0,8,0" />
+            <DatePicker x:Name="ToBox" SelectedDate="{Binding ToDate}" Width="130" />
+            <Button x:Name="ShowButton" Content="Tampilkan [Enter]" Command="{Binding ShowCommand}" />
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <TextBlock x:Name="CountText" Text="{Binding CountText}" Foreground="#555" />
+            <TextBlock x:Name="StatusText" Text="{Binding StatusMessage}" Foreground="Firebrick"
+                       Visibility="{Binding StatusMessage, Converter={StaticResource VisibleWhenText}}" />
+        </StackPanel>
+
+        <DataGrid x:Name="RowsGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}" infra:FocusBehavior.Key="rows"
+                  AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionMode="Single"
+                  RowHeight="22" RowHeaderWidth="14" GridLinesVisibility="All" Background="White"
+                  HorizontalGridLinesBrush="#D5DCE6" VerticalGridLinesBrush="#D5DCE6">
+            <DataGrid.InputBindings>
+                <MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenDetailCommand}"
+                              CommandParameter="{Binding SelectedItem, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                <KeyBinding Key="Enter" Command="{Binding OpenDetailCommand}"
+                            CommandParameter="{Binding SelectedItem, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+            </DataGrid.InputBindings>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Tanggal" Binding="{Binding TimeText}" Width="130" />
+                <DataGridTextColumn Header="No Mutasi" Binding="{Binding Number}" Width="190" />
+                <DataGridTextColumn Header="Dari" Binding="{Binding FromLocationCode}" Width="100" />
+                <DataGridTextColumn Header="Ke" Binding="{Binding ToLocationCode}" Width="100" />
+                <DataGridTextColumn Header="Jumlah Barang" Binding="{Binding LineCount}" Width="100" />
+                <DataGridTextColumn Header="Oleh" Binding="{Binding CreatedByName}" Width="140" />
+                <DataGridTextColumn Header="Keterangan" Binding="{Binding Notes}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>
