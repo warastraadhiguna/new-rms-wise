@@ -151,6 +151,7 @@ public sealed class ProductSearchService(DbConnectionFactory connections, NodeId
             """, new { unitIds, branchId = node.BranchId }, cancellationToken: ct)))
             .ToLookup(p => p.UnitId, p => new PriceCandidate(p.BranchId, p.Price, p.MinQty, p.EffectiveFrom));
 
+        var uniform = await PricingSettings.UniformAsync(c, null, node.BranchId, ct);
         var productIds = rows.Values.Select(r => r.ProductId).Distinct().ToList();
         var stock = (await c.QueryAsync<(Guid ProductId, decimal Qty)>(new CommandDefinition(
             """
@@ -166,7 +167,7 @@ public sealed class ProductSearchService(DbConnectionFactory connections, NodeId
             var r = rows[m.UnitId];
             var candidates = prices[m.UnitId].ToList();
             var tiers = candidates.Where(p => p.EffectiveFrom <= now).Select(p => p.MinQty).Distinct().Order()
-                .Select(minQty => (minQty, price: PriceResolver.Resolve(candidates, node.BranchId, now, minQty)))
+                .Select(minQty => (minQty, price: PriceResolver.Resolve(candidates, node.BranchId, now, minQty, uniform)))
                 .Where(t => t.price is not null)
                 .Select(t => new PriceTierDto(t.minQty, t.price!.Value))
                 .DistinctBy(t => t.Price)
@@ -175,7 +176,7 @@ public sealed class ProductSearchService(DbConnectionFactory connections, NodeId
 
             return new ProductSearchItem(r.ProductId, r.ProductUnitId, r.Sku, r.Name, m.Barcode ?? r.FirstBarcode,
                 r.UnitCode, r.UnitName, r.Conversion, r.AllowDecimal, r.AllowQtyMultiplier, r.TrackExpiry, r.Brand, r.Category,
-                r.ShelfLocation, PriceResolver.Resolve(candidates, node.BranchId, now, 1m), DiscountPrice: null, tiers, baseQty,
+                r.ShelfLocation, PriceResolver.Resolve(candidates, node.BranchId, now, 1m, uniform), DiscountPrice: null, tiers, baseQty,
                 r.Conversion > 0 ? StorageScale.Round(baseQty / r.Conversion) : 0m, m.By, r.BaseUnitCode, r.BaseAllowDecimal);
         }).ToList();
     }

@@ -10,10 +10,12 @@ public readonly record struct PriceCandidate(Guid? BranchId, decimal Price, deci
 /// 3. the best tier is the largest <c>min_qty &lt;= qty</c>, looked up in the branch rows AND the default rows;
 /// 4. the tier with the larger <c>min_qty</c> wins; on equal <c>min_qty</c> the branch price wins;
 /// 5. below every tier (0,5 kg priced from 1 kg) the smallest <c>min_qty</c> applies (branch wins a tie).
+/// With setting <c>pricing.uniform</c> = true (<paramref name="uniformPricing"/>) branch rows are ignored entirely:
+/// every branch sells at the default prices.
 /// </summary>
 public static class PriceResolver
 {
-    public static decimal? Resolve(IEnumerable<PriceCandidate> candidates, Guid branchId, DateTime now, decimal qty)
+    public static decimal? Resolve(IEnumerable<PriceCandidate> candidates, Guid branchId, DateTime now, decimal qty, bool uniformPricing = false)
     {
         ArgumentNullException.ThrowIfNull(candidates);
         if (now.Kind != DateTimeKind.Utc)
@@ -22,7 +24,7 @@ public static class PriceResolver
             throw new ArgumentOutOfRangeException(nameof(qty), qty, "Quantity must be greater than zero.");
 
         var effective = candidates.Where(c => c.EffectiveFrom <= now).ToList();
-        var branchRows = effective.Where(c => c.BranchId == branchId).ToList();
+        var branchRows = uniformPricing ? [] : effective.Where(c => c.BranchId == branchId).ToList();
         var defaultRows = effective.Where(c => c.BranchId is null).ToList();
         var branch = BestTier(branchRows, qty);
         var fallback = BestTier(defaultRows, qty);

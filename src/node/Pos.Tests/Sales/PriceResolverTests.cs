@@ -189,6 +189,37 @@ public class PriceResolverTests
         Assert.Equal(3900m, Resolve(1m, P("4000", "2026-01-01T00:00:00Z"), P("3900", "2026-01-01T00:00:00Z")));
     }
 
+
+    // ---- setting pricing.uniform = true: one price for every branch --------------------------------------
+
+    [Fact]
+    public void Uniform_pricing_ignores_the_branch_rows()
+    {
+        PriceCandidate[] rows = [P("17500", "2026-06-01T00:00:00Z"), P("18000", "2026-01-01T00:00:00Z", Branch)];
+
+        Assert.Equal(18000m, PriceResolver.Resolve(rows, Branch, Now, 1m));
+        Assert.Equal(17500m, PriceResolver.Resolve(rows, Branch, Now, 1m, uniformPricing: true));
+    }
+
+    [Fact]
+    public void Uniform_pricing_ignores_branch_wholesale_tiers_too()
+    {
+        PriceCandidate[] rows =
+        [
+            P("4000", "2026-01-01T00:00:00Z"), P("3500", "2026-01-01T00:00:00Z", minQty: "12"),
+            P("3000", "2026-01-01T00:00:00Z", Branch, minQty: "6"),
+        ];
+
+        Assert.Equal(3000m, PriceResolver.Resolve(rows, Branch, Now, 6m));
+        Assert.Equal(4000m, PriceResolver.Resolve(rows, Branch, Now, 6m, uniformPricing: true));
+        Assert.Equal(3500m, PriceResolver.Resolve(rows, Branch, Now, 12m, uniformPricing: true));
+    }
+
+    [Fact]
+    public void Uniform_pricing_with_only_a_branch_price_has_no_price()
+    {
+        Assert.Null(PriceResolver.Resolve([P("18000", "2026-01-01T00:00:00Z", Branch)], Branch, Now, 1m, uniformPricing: true));
+    }
     [Fact]
     public void Rejects_non_positive_qty_and_non_utc_now()
     {

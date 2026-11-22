@@ -293,7 +293,8 @@ public sealed class SaleService(
             FROM prices
             WHERE product_unit_id = @productUnitId AND deleted_at IS NULL AND (branch_id = @branchId OR branch_id IS NULL)
             """, new { productUnitId, branchId = node.BranchId }, tx, cancellationToken: ct));
-        var price = PriceResolver.Resolve(candidates, node.BranchId, now, line.Qty)
+        var uniform = await PricingSettings.UniformAsync(c, tx, node.BranchId, ct);
+        var price = PriceResolver.Resolve(candidates, node.BranchId, now, line.Qty, uniform)
             ?? throw ApiException.Unprocessable("no_price", $"Product unit {productUnitId} has no price for quantity {line.Qty}.");
 
         SaleLineAmounts amounts;

@@ -21,7 +21,7 @@ class PosSeedDev extends Command
 
     protected $signature = 'pos:seed-dev';
 
-    protected $description = 'Seed HQ development data (entity, branch, nodes HQ and TK01, role OWNER, user admin/admin123)';
+    protected $description = 'Seed HQ development data (entity, branch, nodes HQ and TK01, role OWNER, user admin/admin123, units PCS/BOX/KG)';
 
     public function handle(MasterDataWriter $writer): int
     {
@@ -32,13 +32,21 @@ class PosSeedDev extends Command
             return self::FAILURE;
         }
 
+        $context = WriteContext::system();
+        $units = 0;
+        foreach ([['PCS', 'Pieces', false], ['BOX', 'Box', false], ['KG', 'Kilogram', true]] as [$code, $name, $decimal]) {
+            if (! DB::table('units')->where('code', $code)->exists()) {
+                $writer->create('units', ['code' => $code, 'name' => $name, 'allow_decimal' => $decimal], $context);
+                $units++;
+            }
+        }
+
         if (DB::table('nodes')->where('code', 'HQ')->exists()) {
-            $this->components->info('Dev data already present (node HQ exists); nothing to do.');
+            $this->components->info('Dev data already present (node HQ exists); '.($units === 0 ? 'nothing to do.' : "{$units} unit(s) added."));
 
             return self::SUCCESS;
         }
 
-        $context = WriteContext::system();
         $entity = $writer->create('entities', ['code' => 'E01', 'name' => 'PT Dev Retail'], $context);
         $branch = $writer->create('branches', [
             'entity_id' => $entity, 'code' => 'B01', 'name' => 'Cabang Dev', 'timezone' => 'Asia/Jakarta',

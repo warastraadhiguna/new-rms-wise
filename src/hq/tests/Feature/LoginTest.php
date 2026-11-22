@@ -128,7 +128,7 @@ it('shows every menu page to a logged-in user', function () {
     $user = makeUser();
     login($user->username, $user->password);
 
-    foreach (['master-data' => 'Master Data', 'pembelian' => 'Pembelian', 'stok' => 'Stok', 'laporan' => 'Laporan', 'pengaturan' => 'Pengaturan'] as $path => $title) {
+    foreach (['pembelian' => 'Pembelian', 'stok' => 'Stok', 'laporan' => 'Laporan', 'pengaturan' => 'Pengaturan'] as $path => $title) {
         $this->get("/{$path}")->assertOk()->assertInertia(fn (Assert $page) => $page->component('placeholder')->where('title', $title));
     }
 });

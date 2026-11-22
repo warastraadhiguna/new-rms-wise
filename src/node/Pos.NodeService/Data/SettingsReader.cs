@@ -31,3 +31,25 @@ public static class SettingsReader
         };
     }
 }
+
+/// <summary>Setting pricing.uniform: true = one price for all branches, branch prices (prices.branch_id) are ignored.</summary>
+public static class PricingSettings
+{
+    public const string UniformKey = "pricing.uniform";
+
+    /// <summary>JSON true/false (or "true"/"false", 1/0); missing = false (prices may differ per branch).</summary>
+    public static async Task<bool> UniformAsync(MySqlConnection c, MySqlTransaction? tx, Guid branchId, CancellationToken ct)
+    {
+        var json = await SettingsReader.GetJsonAsync(c, tx, UniformKey, branchId, ct);
+        if (json is null)
+            return false;
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.Number => doc.RootElement.GetDecimal() != 0,
+            JsonValueKind.String => doc.RootElement.GetString() is "true" or "1",
+            _ => false,
+        };
+    }
+}

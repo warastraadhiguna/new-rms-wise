@@ -25,6 +25,8 @@ final class MasterDataWriter
 
     public const ACTION_DELETE = 'DELETE';
 
+    public const ACTION_RESTORE = 'RESTORE';
+
     /** Columns the writer owns; callers cannot set them. */
     private const OWNED = ['id', 'version', 'deleted_at'];
 
@@ -86,6 +88,31 @@ final class MasterDataWriter
                 'version' => $version,
             ]);
             $this->audit($table, $id, self::ACTION_DELETE, $old, $this->load($table, $id), $context);
+
+            return $version;
+        });
+    }
+
+    /**
+     * Brings a soft-deleted row back (deleted_at NULL, new version), optionally with changed columns — e.g. a barcode
+     * that was removed and is now given to another unit (the unique key still holds the deleted row).
+     *
+     * @param  array<string, mixed>  $values
+     *
+     * @throws RuntimeException the row does not exist or is not deleted
+     */
+    public function restore(string $table, string $id, array $values = [], ?WriteContext $context = null): int
+    {
+        $this->guard($table, $values);
+
+        return DB::transaction(function () use ($table, $id, $values, $context) {
+            $row = DB::table($table)->where('id', $id)->whereNotNull('deleted_at')->lockForUpdate()->first();
+            if ($row === null) {
+                throw new RuntimeException("{$table} {$id} does not exist or is not deleted.");
+            }
+            $version = $this->nextVersion();
+            DB::table($table)->where('id', $id)->update($values + ['deleted_at' => null, 'version' => $version]);
+            $this->audit($table, $id, self::ACTION_RESTORE, (array) $row, $this->load($table, $id), $context);
 
             return $version;
         });
