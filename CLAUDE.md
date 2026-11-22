@@ -106,14 +106,16 @@ src/android/           Kotlin app (later)
 - Async all the way for I/O. Pass `CancellationToken`.
 
 ## HQ (Laravel) — src/hq
-- Laravel 13 + official React starter kit (Inertia + React + TypeScript), Pest 4. Production runs **PHP 8.4**
-  (the laptop has 8.5): `composer.json` keeps `config.platform.php = 8.4.0` and `require.php = ^8.4`.
+- Laravel 13 + official React starter kit (Inertia + React + TypeScript), Pest 5. Production runs **PHP 8.4.27**
+  (the laptop has 8.5): `composer.json` keeps `config.platform.php = 8.4.27` and `require.php = ^8.4`.
   Never use PHP 8.5-only features (pipe operator `|>`, etc.).
 - MySQL 8.4 (server port 3307). Local WAMP: `pos_hq_dev` (dev) and `pos_hq_test` (tests), user `pos_app`.
   `.env` is git-ignored; `.env.example` lists every key.
 - **Schema:** the domain schema comes ONLY from `database/migrations/*.sql` via `php artisan pos:migrate`
   (`App\Support\Schema\SqlMigrator`): name order, statement by statement, UTC session, journal `schema_versions`
   with DbUp's exact table and script names — one database can be migrated from the node or HQ without repeats.
+- **Every table InnoDB** (WAMP defaults to MyISAM): every `CREATE TABLE` declares `ENGINE=InnoDB`; the Node Service
+  (at start) and HQ (`pos:migrate`, and the web on its first request) refuse to run when any table is not InnoDB.
   Laravel migrations (`src/hq/database/migrations`) are for framework tables only (sessions, cache, jobs);
   none may touch a domain table (a test checks this). New domain tables/columns = a new numbered SQL file.
 - UTC everywhere (app timezone and MySQL session `+00:00`); screens convert to the branch timezone

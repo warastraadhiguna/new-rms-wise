@@ -112,6 +112,14 @@ if (!migration.Successful)
 startupLog.LogInformation("Database migrations applied: {Count} ({Scripts}).",
     migration.ScriptsApplied.Count, migration.ScriptsApplied.Count == 0 ? "up to date" : string.Join(", ", migration.ScriptsApplied));
 
+var notInnoDb = await StorageEngineCheck.NonInnoDbTablesAsync(app.Services.GetRequiredService<DbConnectionFactory>());
+if (notInnoDb.Count > 0)
+{
+    startupLog.LogCritical("Tables that are not InnoDB: {Tables}. Node Service stopped; convert them with ALTER TABLE ... ENGINE=InnoDB.",
+        string.Join(", ", notInnoDb));
+    return 1;
+}
+
 // The node's signing key is created on the first start (or loaded) before any request arrives.
 try
 {

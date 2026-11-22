@@ -36,9 +36,32 @@ public class DatabaseTests(DatabaseFixture db)
 
         Assert.True(outcome.Successful);
         Assert.Empty(outcome.ScriptsApplied);
-        Assert.Equal("0009_sale_returns.sql", migrator.GetAppliedScripts().Order().Last());
+        Assert.Equal("0010_innodb_journal.sql", migrator.GetAppliedScripts().Order().Last());
     }
 
+
+    [DatabaseFact]
+    public async Task Every_table_is_innodb_after_the_migrations_including_the_journal()
+    {
+        Assert.Empty(await StorageEngineCheck.NonInnoDbTablesAsync(db.Factory));
+    }
+
+    [DatabaseFact]
+    public async Task A_myisam_table_is_reported_so_the_node_refuses_to_start()
+    {
+        var table = "zz_myisam_" + Guid.NewGuid().ToString("N")[..8];
+        await using (var connection = await db.Factory.OpenAsync())
+            await connection.ExecuteAsync($"CREATE TABLE {table} (id INT) ENGINE=MyISAM");
+        try
+        {
+            Assert.Equal([$"{table} (MyISAM)"], await StorageEngineCheck.NonInnoDbTablesAsync(db.Factory));
+        }
+        finally
+        {
+            await using var connection = await db.Factory.OpenAsync();
+            await connection.ExecuteAsync($"DROP TABLE {table}");
+        }
+    }
     [DatabaseFact]
     public async Task Migration_journal_time_is_utc()
     {

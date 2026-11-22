@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Support\Schema\SqlMigrator;
+use App\Support\Schema\StorageEngineCheck;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -43,6 +44,14 @@ class PosMigrate extends Command
         $applied === []
             ? $this->components->info('Domain schema is up to date.')
             : $this->components->info(count($applied).' script(s) applied.');
+
+        // Same rule as the Node Service at start: every table InnoDB.
+        $notInnoDb = StorageEngineCheck::nonInnoDbTables(DB::connection());
+        if ($notInnoDb !== []) {
+            $this->components->error('Tables that are not InnoDB: '.implode(', ', $notInnoDb).'. Convert them with ALTER TABLE ... ENGINE=InnoDB.');
+
+            return self::FAILURE;
+        }
 
         return self::SUCCESS;
     }
