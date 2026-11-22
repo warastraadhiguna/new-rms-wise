@@ -2,16 +2,20 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\MasterData\NodeController;
+use App\Support\MasterData\CodeGenerator;
 use App\Support\MasterData\MasterDataWriter;
 use App\Support\MasterData\WriteContext;
+use App\Support\Setup\SystemSetup;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 
 /**
- * Development data for the HQ web: entity E01, branch B01 (Asia/Jakarta), nodes HQ and TK01, role OWNER with "*",
- * user admin / admin123 with OWNER at all nodes. Written through the master data writer (versions + audit), like any
- * other master data. Refuses databases not named *_dev / *_test; safe to repeat.
+ * Development data for the HQ web: first pos:setup (system data), then the user admin / admin123 (OWNER for all
+ * nodes) and sample data — entity E01, branch B01 (Asia/Jakarta), nodes HQ and TK01 (with DISPLAY and DAMAGED),
+ * a few products with barcodes and prices, a customer with credit and a supplier. Everything through the master data
+ * writer. Refuses databases not named *_dev / *_test; safe to repeat.
  */
 class PosSeedDev extends Command
 {
@@ -19,11 +23,20 @@ class PosSeedDev extends Command
 
     public const ADMIN_PASSWORD = 'admin123';
 
+    /** sku => [name, base unit, barcode, price] */
+    private const PRODUCTS = [
+        'DEV-0001' => ['Teh Botol Sosro 450 ml', 'PCS', '8991001000011', '4000'],
+        'DEV-0002' => ['Indomie Goreng', 'PCS', '8991001000028', '3500'],
+        'DEV-0003' => ['Gula Pasir', 'KG', '8991001000035', '16000'],
+        'DEV-0004' => ['Aqua 600 ml', 'PCS', '8991001000042', '3000'],
+        'DEV-0005' => ['Beras Premium', 'KG', '8991001000059', '14000'],
+    ];
+
     protected $signature = 'pos:seed-dev';
 
-    protected $description = 'Seed HQ development data (entity, branch, nodes HQ and TK01, role OWNER, user admin/admin123, units PCS/BOX/KG)';
+    protected $description = 'pos:setup plus HQ development data (admin/admin123, entity, branch, nodes HQ and TK01, sample products)';
 
-    public function handle(MasterDataWriter $writer): int
+    public function handle(MasterDataWriter $writer, SystemSetup $setup): int
     {
         $database = (string) DB::connection()->getDatabaseName();
         if (! preg_match('/_(dev|test)$/', $database)) {
@@ -32,39 +45,56 @@ class PosSeedDev extends Command
             return self::FAILURE;
         }
 
+        $this->call('pos:setup', ['--no-interaction' => true]);
         $context = WriteContext::system();
-        $units = 0;
-        foreach ([['PCS', 'Pieces', false], ['BOX', 'Box', false], ['KG', 'Kilogram', true]] as [$code, $name, $decimal]) {
-            if (! DB::table('units')->where('code', $code)->exists()) {
-                $writer->create('units', ['code' => $code, 'name' => $name, 'allow_decimal' => $decimal], $context);
-                $units++;
-            }
+
+        if (! DB::table('users')->where('username', self::ADMIN_USERNAME)->exists()) {
+            $setup->createOwner(self::ADMIN_USERNAME, self::ADMIN_PASSWORD, 'Administrator');
         }
 
         if (DB::table('nodes')->where('code', 'HQ')->exists()) {
-            $this->components->info('Dev data already present (node HQ exists); '.($units === 0 ? 'nothing to do.' : "{$units} unit(s) added."));
+            $this->components->info('Dev data already present (node HQ exists); nothing to do.');
 
             return self::SUCCESS;
         }
 
-        $entity = $writer->create('entities', ['code' => 'E01', 'name' => 'PT Dev Retail'], $context);
-        $branch = $writer->create('branches', [
-            'entity_id' => $entity, 'code' => 'B01', 'name' => 'Cabang Dev', 'timezone' => 'Asia/Jakarta',
-        ], $context);
-        $writer->create('nodes', ['branch_id' => $branch, 'code' => 'HQ', 'name' => 'Kantor Pusat', 'type' => 'HQ'], $context);
-        $writer->create('nodes', ['branch_id' => $branch, 'code' => 'TK01', 'name' => 'Toko Dev 1', 'type' => 'STORE'], $context);
-
-        $owner = DB::table('roles')->where('code', 'OWNER')->whereNull('deleted_at')->value('id')
-            ?? $writer->create('roles', ['code' => 'OWNER', 'name' => 'Pemilik', 'permissions' => json_encode(['*'])], $context);
-        $admin = DB::table('users')->where('username', self::ADMIN_USERNAME)->value('id')
-            ?? $writer->create('users', [
-                'username' => self::ADMIN_USERNAME,
-                'password_hash' => Hash::make(self::ADMIN_PASSWORD),
-                'full_name' => 'Administrator',
+        DB::transaction(function () use ($writer, $context) {
+            $entity = $writer->create('entities', ['code' => 'E01', 'name' => 'PT Dev Retail'], $context);
+            $branch = $writer->create('branches', [
+                'entity_id' => $entity, 'code' => 'B01', 'name' => 'Cabang Dev', 'timezone' => 'Asia/Jakarta',
             ], $context);
-        $writer->create('user_roles', ['user_id' => $admin, 'role_id' => $owner, 'node_id' => null], $context);
+            $writer->create('nodes', ['branch_id' => $branch, 'code' => 'HQ', 'name' => 'Kantor Pusat', 'type' => 'HQ'], $context);
+            $store = $writer->create('nodes', ['branch_id' => $branch, 'code' => 'TK01', 'name' => 'Toko Dev 1', 'type' => 'STORE'], $context);
+            foreach (NodeController::DEFAULT_LOCATIONS['STORE'] as [$code, $name, $type, $sellable]) {
+                $writer->create('locations', ['node_id' => $store, 'code' => $code, 'name' => $name, 'type' => $type, 'is_sellable' => $sellable], $context);
+            }
 
-        $this->components->info('Dev data created: nodes HQ and TK01, user '.self::ADMIN_USERNAME.' / '.self::ADMIN_PASSWORD.' (OWNER).');
+            $admin = (string) DB::table('users')->where('username', self::ADMIN_USERNAME)->value('id');
+            $from = CarbonImmutable::now('UTC')->subDay()->format('Y-m-d H:i:s.v');
+            foreach (self::PRODUCTS as $sku => [$name, $unitCode, $barcode, $price]) {
+                if (DB::table('products')->where('sku', $sku)->exists()) {
+                    continue;
+                }
+                $unit = (string) DB::table('units')->where('code', $unitCode)->value('id');
+                $product = $writer->create('products', ['sku' => $sku, 'name' => $name, 'base_unit_id' => $unit, 'status' => 'ACTIVE'], $context);
+                $pu = $writer->create('product_units', [
+                    'product_id' => $product, 'unit_id' => $unit, 'conversion' => '1.0000', 'is_default_sale' => true, 'is_default_purchase' => true,
+                ], $context);
+                $writer->create('product_barcodes', ['product_unit_id' => $pu, 'barcode' => $barcode], $context);
+                $writer->create('prices', [
+                    'product_unit_id' => $pu, 'branch_id' => null, 'price' => $price.'.0000', 'min_qty' => '1.0000',
+                    'effective_from' => $from, 'created_by' => $admin,
+                ], $context);
+            }
+
+            $writer->create('contacts', [
+                'code' => CodeGenerator::next('contacts', 'code', 'C'), 'is_customer' => true, 'name' => 'Budi Pelanggan', 'phone' => '081200000001',
+                'credit_limit' => '500000.0000', 'payment_term_days' => 14,
+            ], $context);
+            $writer->create('contacts', ['code' => CodeGenerator::next('contacts', 'code', 'S'), 'is_supplier' => true, 'name' => 'PT Sumber Dev', 'bank_account' => 'BCA 1234567890'], $context);
+        });
+
+        $this->components->info('Dev data created: nodes HQ and TK01, 5 products, user '.self::ADMIN_USERNAME.' / '.self::ADMIN_PASSWORD.' (OWNER).');
 
         return self::SUCCESS;
     }

@@ -202,6 +202,14 @@ final class ProductCatalog
         }
         // Today: from this moment, so the new row is the latest and wins over an earlier price of the same day.
         $effectiveFrom = $date->format('Y-m-d') === self::today() ? CarbonImmutable::now('UTC') : $date->startOfDay()->utc();
+        // One active price per unit, branch, min qty and start (uk_prices_active): two would be ambiguous at the node.
+        $taken = DB::table('prices')->where('product_unit_id', $productUnitId)->whereNull('deleted_at')
+            ->where('min_qty', Decimal::toString($minQty))->where('effective_from', $effectiveFrom->format('Y-m-d H:i:s.v'))
+            ->when($branchId === null, fn ($q) => $q->whereNull('branch_id'), fn ($q) => $q->where('branch_id', $branchId))
+            ->exists();
+        if ($taken) {
+            throw ValidationException::withMessages(['effective_from' => 'Sudah ada harga yang akan berlaku pada tanggal itu untuk satuan, cabang, dan qty minimum ini. Hapus dulu harga tersebut.']);
+        }
 
         return $writer->create('prices', [
             'product_unit_id' => $productUnitId,

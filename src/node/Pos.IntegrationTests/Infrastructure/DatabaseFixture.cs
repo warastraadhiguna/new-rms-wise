@@ -33,6 +33,9 @@ public sealed class DatabaseFixture : IAsyncLifetime
 
     public static string MigrationsPath => Path.Combine(AppContext.BaseDirectory, "migrations");
 
+    /// <summary>The newest migration file, e.g. "0011_nullable_unique_keys.sql" (tests never hard-code it).</summary>
+    public static string LatestMigration => Directory.GetFiles(MigrationsPath, "*.sql").Select(Path.GetFileName).Order(StringComparer.Ordinal).Last()!;
+
     /// <summary>Node signing key for this test run (temporary file, deleted afterwards).</summary>
     public string KeyPath { get; } = Path.Combine(Path.GetTempPath(), "pos-test-keys", Guid.NewGuid().ToString("N"), "jwt-signing.key");
 

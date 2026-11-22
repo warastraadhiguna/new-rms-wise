@@ -36,7 +36,7 @@ public class DatabaseTests(DatabaseFixture db)
 
         Assert.True(outcome.Successful);
         Assert.Empty(outcome.ScriptsApplied);
-        Assert.Equal("0010_innodb_journal.sql", migrator.GetAppliedScripts().Order().Last());
+        Assert.Equal(DatabaseFixture.LatestMigration, migrator.GetAppliedScripts().Order().Last());
     }
 
 

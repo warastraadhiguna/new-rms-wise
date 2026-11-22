@@ -134,8 +134,13 @@ src/android/           Kotlin app (later)
   one transaction, `master_version.last_version + 1` under `SELECT ... FOR UPDATE`, the row's `version` set,
   UUID v7 ids, soft delete (`deleted_at` + new version), `audit_logs` (user, table, id, action, old/new, IP).
   Never `Model::save()` / `DB::table()->update()` on master data in application code.
-- Dev data: `php artisan pos:seed-dev` (entity E01, branch B01, nodes HQ and TK01, role OWNER `"*"`,
-  user `admin` / `admin123`); refuses databases not named `*_dev` / `*_test`.
+- System data: `php artisan pos:setup` (idempotent, also in production): units, payment methods CASH/DEBIT/QRIS/TRANSFER/
+  CREDIT/RETURN, standard reasons, roles OWNER/HQ_ADMIN/STORE_ADMIN/CASHIER/WAREHOUSE_STAFF, default settings; creates
+  the first OWNER (`--owner-username`, `--owner-password`) when none is active. Never overwrites what admins changed.
+- Dev data: `php artisan pos:seed-dev` = `pos:setup` + user `admin` / `admin123` (OWNER) + entity E01, branch B01,
+  nodes HQ and TK01, sample products/contacts; refuses databases not named `*_dev` / `*_test`.
+- Unique keys never rely on a nullable column: use a generated `COALESCE(col, '')` key column (and
+  `IF(deleted_at IS NULL, 1, NULL)` for "one active row"), see migration 0011. Sync never writes generated columns.
 - Run: `cd src/hq && composer install && npm install && cp .env.example .env && php artisan key:generate`,
   then `php artisan pos:migrate && php artisan migrate && php artisan pos:seed-dev`, `composer dev` (or `npm run build`
   and `php artisan serve`).
