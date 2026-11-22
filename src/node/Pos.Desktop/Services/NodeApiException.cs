@@ -41,6 +41,8 @@ public static class ErrorMessages
         "already_reversed" => "Mutasi ini sudah pernah dibalik; satu mutasi hanya bisa dibalik sekali.",
         "reversal_direction" => "Mutasi balik harus dari lokasi tujuan ke lokasi asal mutasi semula.",
         "unknown_shift" => "Shift tidak ditemukan di Node Service.",
+        "history_limit" => "Tanggal awal melewati batas yang dapat dilihat kasir (setting sales.cashier_history_days).",
+        "invalid_paging" => "Permintaan halaman data tidak valid.",
         "shift_already_closed" => "Shift ini sudah ditutup dan tidak bisa diubah.",
         "shift_close_forbidden" => "Shift ini milik kasir lain; menutupnya perlu izin tutup shift (shift.close).",
         "notes_required" => "Keterangan wajib diisi untuk menutup shift milik kasir lain.",

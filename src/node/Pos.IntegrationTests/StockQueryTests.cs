@@ -49,6 +49,12 @@ public class StockQueryTests(DatabaseFixture db) : IAsyncLifetime
         await connection.ExecuteAsync(sql, args);
     }
 
+    private async Task<T> ScalarAsync<T>(string sql, object args)
+    {
+        await using var connection = await db.Factory.OpenAsync();
+        return (await connection.ExecuteScalarAsync<T>(sql, args))!;
+    }
+
     /// <summary>Adds a BOX of 24 (largest unit) to the product.</summary>
     private async Task AddBoxAsync(Guid productId)
     {
@@ -72,7 +78,8 @@ public class StockQueryTests(DatabaseFixture db) : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, status);
         var codes = body.EnumerateArray().Select(l => l.Str("code")).ToList();
-        Assert.Equal(["DISPLAY", "STORAGE"], codes);
+        Assert.Equal("DISPLAY", codes[0]);                                         // sellable first
+        Assert.Equal(["DISPLAY", "RUSAK", "STORAGE"], codes.Where(c => c is "DISPLAY" or "RUSAK" or "STORAGE"));  // dev seed
         Assert.True(body[0].GetProperty("is_sellable").GetBoolean());
     }
 
@@ -135,7 +142,9 @@ public class StockQueryTests(DatabaseFixture db) : IAsyncLifetime
             normal.GetProperty("items").EnumerateArray().Select(r => (r.Id("product_id"), r.Str("location_code"), r.Dec("base_qty"))));
         var rows = withEmpty.GetProperty("items").EnumerateArray()
             .Select(r => (r.Id("product_id"), r.Str("location_code"), r.Dec("base_qty"))).ToList();
-        Assert.Equal(4, withEmpty.GetProperty("total").GetInt32());                // 2 active products x 2 locations
+        var locations = await ScalarAsync<int>(
+            "SELECT COUNT(*) FROM locations WHERE node_id = @NodeId AND is_active = 1 AND deleted_at IS NULL", new { db.NodeId });
+        Assert.Equal(2 * locations, withEmpty.GetProperty("total").GetInt32());   // 2 active products x every location
         Assert.Contains((stocked.ProductId, "DISPLAY", 4m), rows);
         Assert.Contains((stocked.ProductId, "STORAGE", 0m), rows);
         Assert.Contains((never.ProductId, "DISPLAY", 0m), rows);

@@ -74,9 +74,15 @@ public static class ApiEndpoints
                 service.GetAsync(PermissionSet.FromNames(user.FindAll(TokenService.PermissionClaim).Select(c => c.Value)), ct))
             .RequireAuthorization(Permissions.SaleCreate);
 
+        // Data Penjualan: branch dates from..to (default today), q = nota / member / cashier. Without sale.history only H-N days.
+        api.MapGet("/sales", (DateOnly? from, DateOnly? to, string? q, int? offset, int? limit, SalesListService service,
+                NodeIdentity nodeIdentity, TimeProvider clock, ClaimsPrincipal user, CancellationToken ct) =>
+                ListSalesAsync(from, to, q, offset, limit, service, nodeIdentity, clock, user, ct))
+            .RequireAuthorization(Policies.SalesRead);
+
         // Receipt data of a stored sale (print after payment, F5 reprint): names, cashier, branch timezone, receipt texts.
         api.MapGet("/sales/{saleId:guid}", (Guid saleId, SaleDetailService service, CancellationToken ct) => service.GetAsync(saleId, ct))
-            .RequireAuthorization(Permissions.SaleCreate);
+            .RequireAuthorization(Policies.SalesRead);
 
         // Product lookup is shared by the cashier, the stock screens and Form Mutasi Lokasi.
         api.MapGet("/products/search", (string? q, ProductSearchService service, CancellationToken ct) => service.SearchAsync(q, ct))
@@ -141,5 +147,13 @@ public static class ApiEndpoints
             service.RebuildAsync(user.UserId(), user.FindFirstValue(TokenService.NameClaim), ct));
 
         return app;
+    }
+
+    private static async Task<SalesListPage> ListSalesAsync(DateOnly? from, DateOnly? to, string? q, int? offset, int? limit,
+        SalesListService service, NodeIdentity nodeIdentity, TimeProvider clock, ClaimsPrincipal user, CancellationToken ct)
+    {
+        var today = BranchClock.Today(clock.GetUtcNow().UtcDateTime, (await nodeIdentity.GetAsync(ct)).TimeZone);
+        return await service.ListAsync(from ?? today, to ?? today, q, offset ?? 0, limit ?? 500,
+            user.HasPermission(Permissions.SaleHistory), ct);
     }
 }

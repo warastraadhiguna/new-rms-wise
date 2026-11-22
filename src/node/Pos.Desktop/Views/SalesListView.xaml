@@ -1,0 +1,108 @@
+<UserControl x:Class="Pos.Desktop.Views.SalesListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:infra="clr-namespace:Pos.Desktop.Infrastructure"
+             FontFamily="Tahoma" FontSize="13" Background="#EEF3FA"
+             infra:FocusBehavior.Request="{Binding FocusRequest}">
+    <!-- RMS 2 keys: F11 Lihat/Cetak, F8 Export, Esc close; Enter on a row = Lihat. -->
+    <UserControl.InputBindings>
+        <KeyBinding Key="F11" Command="{Binding ViewCommand}" />
+        <KeyBinding Key="F8" Command="{Binding ExportCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
+    </UserControl.InputBindings>
+    <UserControl.Resources>
+        <infra:VisibleWhenTextConverter x:Key="VisibleWhenText" />
+        <Style x:Key="Right" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="Margin" Value="4,0,0,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel Margin="10">
+        <TextBlock DockPanel.Dock="Top" Text="Data Penjualan" FontSize="24" FontWeight="Bold" Margin="0,4,0,12" />
+
+        <!-- Tanggal awal - akhir | Cari -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="130" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="130" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.InputBindings>
+                <KeyBinding Key="Enter" Command="{Binding ShowCommand}" />
+            </Grid.InputBindings>
+            <TextBlock Text="Tanggal" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <DatePicker x:Name="FromBox" Grid.Column="1" SelectedDate="{Binding FromDate}" DisplayDateStart="{Binding EarliestDate}" />
+            <TextBlock Grid.Column="2" Text="s/d" VerticalAlignment="Center" Margin="8,0" />
+            <DatePicker x:Name="ToBox" Grid.Column="3" SelectedDate="{Binding ToDate}" DisplayDateStart="{Binding EarliestDate}" />
+            <Button x:Name="ShowButton" Grid.Column="4" Content="Tampilkan [Enter]" Command="{Binding ShowCommand}" Margin="8,0,0,0" />
+            <TextBlock Grid.Column="5" Text="Cari" VerticalAlignment="Center" Margin="16,0,8,0" />
+            <TextBox x:Name="SearchBox" Grid.Column="6" Padding="2" infra:FocusBehavior.Key="search"
+                     ToolTip="No nota, member atau kasir"
+                     infra:SearchNavigation.Results="{Binding ElementName=RowsGrid}"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding ViewCommand}" />
+                </TextBox.InputBindings>
+            </TextBox>
+        </Grid>
+        <TextBlock x:Name="LimitText" DockPanel.Dock="Top" Text="{Binding LimitText}" Foreground="#4A5A70" FontSize="11" Margin="0,0,0,6"
+                   Visibility="{Binding LimitText, Converter={StaticResource VisibleWhenText}}" />
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <StackPanel x:Name="ButtonPanel" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="ViewButton" Content="Lihat/Cetak [F11]" Command="{Binding ViewCommand}" />
+                <Button x:Name="ExportButton" Content="Export to File [F8]" Command="{Binding ExportCommand}" />
+            </StackPanel>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock x:Name="CountText" Text="{Binding CountText}" Foreground="#555" />
+                <TextBlock x:Name="StatusText" Text="{Binding StatusMessage}" Foreground="Firebrick" TextWrapping="Wrap"
+                           Visibility="{Binding StatusMessage, Converter={StaticResource VisibleWhenText}}" />
+            </StackPanel>
+        </DockPanel>
+
+        <DataGrid x:Name="RowsGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}" infra:FocusBehavior.Key="rows"
+                  AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionMode="Single" SelectionUnit="FullRow"
+                  RowHeight="22" RowHeaderWidth="14" GridLinesVisibility="All" Background="White"
+                  HorizontalGridLinesBrush="#D5DCE6" VerticalGridLinesBrush="#D5DCE6">
+            <DataGrid.InputBindings>
+                <KeyBinding Key="Enter" Command="{Binding ViewCommand}" />
+                <MouseBinding Gesture="LeftDoubleClick" Command="{Binding ViewCommand}" />
+            </DataGrid.InputBindings>
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsVoid}" Value="True">
+                            <Setter Property="Foreground" Value="Gray" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="No Nota" Binding="{Binding Number}" Width="170" />
+                <DataGridTextColumn Header="Tanggal Nota" Binding="{Binding DateText}" Width="85" />
+                <DataGridTextColumn Header="Waktu" Binding="{Binding TimeText}" Width="50" />
+                <DataGridTextColumn Header="Member" Binding="{Binding Member}" Width="150" />
+                <DataGridTextColumn Header="Kasir" Binding="{Binding CashierName}" Width="110" />
+                <DataGridTextColumn Header="Cara Bayar" Binding="{Binding PaymentMethods}" Width="110" />
+                <DataGridTextColumn Header="Total" Binding="{Binding TotalText}" Width="90" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Diskon (%)" Binding="{Binding DiscountPctText}" Width="70" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Potongan" Binding="{Binding DiscountAmountText}" Width="80" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Grand Total" Binding="{Binding GrandTotalText}" Width="95" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="85" />
+                <DataGridTextColumn Header="Jatuh Tempo" Binding="{Binding DueDateText}" Width="85" />
+                <DataGridTextColumn Header="Total Tertanggung" Binding="{Binding OutstandingText}" Width="110" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Keterangan" Binding="{Binding Notes}" Width="*" MinWidth="100" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>

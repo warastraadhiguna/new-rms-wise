@@ -196,6 +196,28 @@ public sealed class FakeNodeApi : INodeApi
     }
 
 
+
+    // ---- data penjualan ---------------------------------------------------------------------------
+
+    /// <summary>Rows of Data Penjualan (filtered here by q on number, member and cashier, like the server).</summary>
+    public List<SalesListRow> SalesRows { get; } = [];
+
+    /// <summary>The first date a cashier may see (null = sale.history).</summary>
+    public DateOnly? SalesEarliestDate { get; set; }
+
+    public List<(DateOnly From, DateOnly To, string? Q, int Offset, int Limit)> SalesQueries { get; } = [];
+
+    public Task<SalesListPage> GetSalesAsync(DateOnly from, DateOnly to, string? q, int offset, int limit, CancellationToken ct = default)
+    {
+        Calls.Add($"sales:{from:yyyy-MM-dd}:{to:yyyy-MM-dd}:{q}:{offset}:{limit}");
+        SalesQueries.Add((from, to, q, offset, limit));
+        var text = q ?? "";
+        var matching = SalesRows.Where(r => text.Length == 0
+            || r.Number.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || (r.CustomerName ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+            || r.CashierName.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        return Task.FromResult(new SalesListPage(matching.Skip(offset).Take(limit).ToList(), matching.Count, "Asia/Jakarta", SalesEarliestDate));
+    }
     // ---- tutup shift ------------------------------------------------------------------------------
 
     /// <summary>Returned by GetShiftClosingAsync (default: <see cref="Shifts.Blind"/>).</summary>
@@ -523,6 +545,20 @@ public static class Shifts
             Difference = counted - 268000m,
             Notes = notes,
         };
+}
+
+/// <summary>Data Penjualan rows (sold 02:15 UTC = 09:15 WIB on 22/11/2026).</summary>
+public static class SalesRows
+{
+    public static SalesListRow Cash(string number = "TK01-SL-202611-000101", Guid? id = null) => new(
+        id ?? Guid.CreateVersion7(), number, new DateTime(2026, 11, 22, 2, 15, 0, DateTimeKind.Utc), null, null, "Kasir Satu", "TUNAI",
+        20000m, null, 0m, 20000m, 0m, 0m, "PAID", null, null, true);
+
+    public static SalesListRow Credit(string number = "TK01-SL-202611-000102", Guid? id = null) => new(
+        id ?? Guid.CreateVersion7(), number, new DateTime(2026, 11, 22, 3, 40, 0, DateTimeKind.Utc), "C000001", "Budi Pelanggan", "Kasir Satu",
+        "TUNAI + KREDIT", 62500m, 4m, 2500m, 60000m, 45000m, 45000m, "UNPAID", new DateOnly(2026, 12, 6), "ambil besok", true);
+
+    public static SalesListRow Voided(string number = "TK01-SL-202611-000103") => Cash(number) with { Status = "VOID" };
 }
 public static class Receipts
 {

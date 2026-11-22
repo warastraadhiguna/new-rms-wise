@@ -14,7 +14,8 @@ public sealed record FormFactories(
     Func<StockCardViewModel>? StockCard = null,
     Func<LocationTransferViewModel>? LocationTransfer = null,
     Func<LocationTransferListViewModel>? LocationTransferList = null,
-    Func<ShiftInfo, CloseShiftViewModel>? CloseShift = null);
+    Func<ShiftInfo, CloseShiftViewModel>? CloseShift = null,
+    Func<SalesListViewModel>? SalesList = null);
 
 /// <summary>
 /// The main window: a menu per group as in RMS 2 (Penjualan, Stok, Laporan: Kartu Stok), shown by permission (sale.create,
@@ -153,7 +154,20 @@ public sealed partial class MainViewModel : ObservableObject
         && (shift.CashierId == _session.User?.Id || _session.Has(Permissions.ShiftClose));
 
     /// <summary>Menu "Penjualan": sellers, and whoever may close the shift open on this PC.</summary>
-    public bool ShowSalesMenu => HasSalesMenu || CanCloseShift;
+    public bool ShowSalesMenu => HasSalesMenu || CanCloseShift || CanViewSales;
+
+    /// <summary>Menu Penjualan → Data Penjualan: sale.create (H-N days) or sale.history.</summary>
+    public bool CanViewSales =>
+        _forms.SalesList is not null && (_session.Has(Permissions.SaleCreate) || _session.Has(Permissions.SaleHistory));
+
+    /// <summary>Menu Penjualan → Data Penjualan (one tab).</summary>
+    [RelayCommand]
+    private void OpenSalesList()
+    {
+        if (!CanViewSales)
+            return;
+        Show(Tabs.OfType<SalesListViewModel>().FirstOrDefault() ?? _forms.SalesList!());
+    }
 
     /// <summary>Menu Penjualan → Tutup Shift (a deliberate menu choice: no extra confirmation).</summary>
     [RelayCommand]

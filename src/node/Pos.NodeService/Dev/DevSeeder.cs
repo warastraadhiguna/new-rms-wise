@@ -208,8 +208,55 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
                 new { id = Id(), key, value });
         }
         await Exec("INSERT INTO reasons (id, type, name) VALUES (@id, 'ADJUSTMENT', 'Saldo awal (OPENING)')", new { id = Id() });
+        await SeedSalesAfterCareAsync(c, tx, ct);
     }
 
+    /// <summary>
+    /// Tugas 10 (Data Penjualan, void, retur): the cashier history limit, void and return reasons, a DAMAGED location
+    /// ("RUSAK") per node for damaged returns, and the store admin's new permissions. Safe to repeat.
+    /// </summary>
+    private static async Task<int> SeedSalesAfterCareAsync(MySqlConnection c, MySqlTransaction tx, CancellationToken ct)
+    {
+        Task<int> Exec(string sql, object args) => c.ExecuteAsync(new CommandDefinition(sql, args, tx, cancellationToken: ct));
+
+        var changes = await Exec(
+            """
+            INSERT INTO settings (id, branch_id, setting_key, setting_value)
+            SELECT @id, NULL, 'sales.cashier_history_days', '15' FROM DUAL
+            WHERE NOT EXISTS (SELECT 1 FROM settings WHERE branch_id IS NULL AND setting_key = 'sales.cashier_history_days')
+            """, new { id = Guid.CreateVersion7() });
+        foreach (var (type, name) in new[]
+                 {
+                     ("SALE_VOID", "Salah input"), ("SALE_VOID", "Pembeli batal"), ("SALE_VOID", "Salah harga"),
+                     ("RETURN", "Barang rusak"), ("RETURN", "Salah barang"), ("RETURN", "Kedaluwarsa"), ("RETURN", "Tidak cocok"),
+                 })
+        {
+            changes += await Exec(
+                """
+                INSERT INTO reasons (id, type, name) SELECT @id, @type, @name FROM DUAL
+                WHERE NOT EXISTS (SELECT 1 FROM reasons WHERE type = @type AND name = @name AND deleted_at IS NULL)
+                """, new { id = Guid.CreateVersion7(), type, name });
+        }
+        var withoutDamaged = await c.QueryAsync<Guid>(new CommandDefinition(
+            "SELECT n.id FROM nodes n WHERE NOT EXISTS (SELECT 1 FROM locations l WHERE l.node_id = n.id AND l.type = 'DAMAGED')",
+            transaction: tx, cancellationToken: ct));
+        foreach (var node in withoutDamaged)
+        {
+            changes += await Exec(
+                "INSERT INTO locations (id, node_id, code, name, type, is_sellable) VALUES (@id, @node, 'RUSAK', 'Barang rusak', 'DAMAGED', 0)",
+                new { id = Guid.CreateVersion7(), node });
+        }
+        foreach (var permission in new[] { "sale.history", "sale.void", "sale.return.late" })
+        {
+            changes += await Exec(
+                """
+                UPDATE roles SET permissions = JSON_ARRAY_APPEND(permissions, '$', @permission)
+                WHERE code = 'STORE_ADMIN' AND JSON_TYPE(permissions) = 'ARRAY'
+                  AND NOT JSON_CONTAINS(permissions, JSON_QUOTE(@permission)) AND NOT JSON_CONTAINS(permissions, '"*"')
+                """, new { permission });
+        }
+        return changes;
+    }
     /// <summary>A cashier closes their own shift without a permission; shift.close = closing another cashier's shift (9d).</summary>
     private const string CashierPermissions = """["shift.open","sale.create"]""";
     /// <summary>OWNER and HQ_ADMIN only: "*" includes stock.rebuild.</summary>
@@ -252,7 +299,7 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
 
     /// <summary>Store admin / supervisor: everything a store needs, but not stock.rebuild (owner's decision).</summary>
     private const string StoreAdminPermissions =
-        """["shift.open","shift.close","shift.share","sale.create","sale.discount.override","sale.line.delete","discount.max:100","stock.view","stock.transfer"]""";
+        """["shift.open","shift.close","shift.share","sale.create","sale.discount.override","sale.line.delete","discount.max:100","stock.view","stock.transfer","sale.history","sale.void","sale.return.late"]""";
 
     /// <summary>Receipt texts, one setting per field like the RMS 2 company table and footerText1/footerText2.</summary>
     private static readonly (string Key, string Value)[] ReceiptSettings =
@@ -341,6 +388,7 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
               AND NOT JSON_CONTAINS(permissions, '"stock.transfer"') AND NOT JSON_CONTAINS(permissions, '"*"')
             """, new { });
         changes += await SeedWarehouseStaffAsync(c, tx, ct);
+        changes += await SeedSalesAfterCareAsync(c, tx, ct);
         // 9d: shift.close now means "close another cashier's shift"; cashiers close their own without it.
         changes += await Exec(
             """

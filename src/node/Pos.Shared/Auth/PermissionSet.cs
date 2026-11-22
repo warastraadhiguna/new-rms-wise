@@ -28,8 +28,17 @@ public static class Permissions
     /// <summary>Admin: rebuild stock_balances from stock_ledger after the integrity check found a difference.</summary>
     public const string StockRebuild = "stock.rebuild";
 
+    /// <summary>Data Penjualan without the cashier's day limit (setting sales.cashier_history_days).</summary>
+    public const string SaleHistory = "sale.history";
+
+    /// <summary>Void a sale of a shift that is still open (otherwise a supervisor approves it).</summary>
+    public const string SaleVoid = "sale.void";
+
+    /// <summary>Supervisor: approve a return after the return window (setting returns.window_days).</summary>
+    public const string SaleReturnLate = "sale.return.late";
+
     /// <summary>Actions a supervisor can approve with a PIN.</summary>
-    public static IReadOnlyList<string> ApprovalActions { get; } = [SaleLineDelete, SaleDiscountOverride];
+    public static IReadOnlyList<string> ApprovalActions { get; } = [SaleLineDelete, SaleDiscountOverride, SaleVoid, SaleReturnLate];
 }
 
 /// <summary>

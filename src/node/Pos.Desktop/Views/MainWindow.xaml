@@ -26,6 +26,9 @@
         <DataTemplate DataType="{x:Type vm:LocationTransferViewModel}">
             <views:LocationTransferView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SalesListViewModel}">
+            <views:SalesListView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:LocationTransferListViewModel}">
             <views:LocationTransferListView />
         </DataTemplate>
@@ -39,6 +42,8 @@
                 <MenuItem x:Name="SalesFormMenuItem" Header="Form Penjualan" InputGestureText="F2"
                           Command="{Binding OpenSalesFormCommand}" IsEnabled="{Binding CanSell}"
                           Visibility="{Binding HasSalesMenu, Converter={StaticResource BoolToVisibility}}" />
+                <MenuItem x:Name="SalesListMenuItem" Header="Data Penjualan" Command="{Binding OpenSalesListCommand}"
+                          Visibility="{Binding CanViewSales, Converter={StaticResource BoolToVisibility}}" />
                 <MenuItem x:Name="SalesLockMenuItem" Header="{Binding SalesLockText}" IsEnabled="False" FontStyle="Italic"
                           Visibility="{Binding IsSalesLocked, Converter={StaticResource BoolToVisibility}}" />
                 <Separator Visibility="{Binding CanCloseShift, Converter={StaticResource BoolToVisibility}}" />

@@ -174,6 +174,29 @@ public sealed record ShiftSummary(
 
 /// <param name="Notes">Required when closing another cashier's shift.</param>
 public sealed record CloseShiftRequest(Guid ShiftId, decimal CountedCash, string? Notes);
+
+/// <summary>One row of Data Penjualan. <c>SoldAt</c> is UTC; <c>Status</c> is a <see cref="Pos.Shared.Sales.SaleStatuses"/> code.</summary>
+public sealed record SalesListRow(
+    Guid Id,
+    string Number,
+    DateTime SoldAt,
+    string? CustomerCode,
+    string? CustomerName,
+    string CashierName,
+    string PaymentMethods,
+    decimal Total,
+    decimal? DiscountPct,
+    decimal DiscountAmount,
+    decimal GrandTotal,
+    decimal CreditAmount,
+    decimal Outstanding,
+    string Status,
+    DateOnly? DueDate,
+    string? Notes,
+    bool ShiftOpen);
+
+/// <param name="EarliestDate">The first date this user may see (null = no limit).</param>
+public sealed record SalesListPage(IReadOnlyList<SalesListRow> Items, int Total, string TimeZone, DateOnly? EarliestDate);
 public interface INodeApi
 {
     Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default);
@@ -207,6 +230,9 @@ public interface INodeApi
 
     /// <summary>A stored sale for printing (after payment and F5 reprint); always fresh from the Node Service.</summary>
     Task<SaleDetail> GetSaleAsync(Guid saleId, CancellationToken ct = default);
+
+    /// <summary>Data Penjualan: branch dates, q = nota / member / cashier, paged.</summary>
+    Task<SalesListPage> GetSalesAsync(DateOnly from, DateOnly to, string? q, int offset, int limit, CancellationToken ct = default);
 
     Task<IReadOnlyList<StockLocation>> GetStockLocationsAsync(CancellationToken ct = default);
 

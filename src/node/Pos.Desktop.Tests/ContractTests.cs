@@ -190,6 +190,24 @@ public class ContractTests
         Assert.Null(report.ClosedByName);                                                   // closed by the cashier
         Assert.Equal("TOKO DEV", report.HeaderLines[0]);
     }
+
+    [Fact]
+    public async Task Sales_list()
+    {
+        _server.Reply(HttpStatusCode.OK, Json("sales-list"));
+
+        var page = await Client().GetSalesAsync(new DateOnly(2026, 11, 22), new DateOnly(2026, 11, 22), "kasir 1", 0, 500);
+
+        Assert.Equal("/api/v1/sales?from=2026-11-22&to=2026-11-22&q=kasir%201&offset=0&limit=500",
+            _server.Requests[0].Request.RequestUri!.PathAndQuery);
+        Assert.Equal((3, "Asia/Jakarta"), (page.Total, page.TimeZone));
+        Assert.Equal(new DateOnly(2026, 11, 7), page.EarliestDate);
+        Assert.Equal(["VOID", "UNPAID", "PAID"], page.Items.Select(r => r.Status));
+        var credit = page.Items[1];
+        Assert.Equal(("TUNAI + KREDIT", 45000m, new DateOnly(2026, 12, 6)), (credit.PaymentMethods, credit.Outstanding, credit.DueDate!.Value));
+        Assert.Equal(DateTimeKind.Utc, credit.SoldAt.Kind);
+        Assert.True(credit.ShiftOpen);
+    }
     [Fact]
     public async Task Customer_search()
     {

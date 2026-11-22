@@ -63,6 +63,8 @@ public static class AuthSetup
                 || context.User.HasPermission(Permissions.StockTransfer)));
             options.AddPolicy(Policies.StockTransferRead, policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
                 context.User.HasPermission(Permissions.StockView) || context.User.HasPermission(Permissions.StockTransfer)));
+            options.AddPolicy(Policies.SalesRead, policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+                context.User.HasPermission(Permissions.SaleCreate) || context.User.HasPermission(Permissions.SaleHistory)));
         });
 
         services.AddSingleton(sp => new UserAccessCache(
@@ -121,4 +123,7 @@ public static class Policies
 
     /// <summary>stock.view or stock.transfer: Daftar Mutasi Lokasi and its detail.</summary>
     public const string StockTransferRead = "stock.transfer.read";
+
+    /// <summary>sale.create or sale.history: Data Penjualan, sale detail, Data Retur Penjualan.</summary>
+    public const string SalesRead = "sales.read";
 }
