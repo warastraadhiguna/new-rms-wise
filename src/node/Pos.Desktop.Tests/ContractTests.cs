@@ -163,6 +163,33 @@ public class ContractTests
         Assert.Contains("   2 PCS", TransferDetailText.Lines(detail));
     }
 
+
+    [Fact]
+    public async Task Shift_closing_and_close()
+    {
+        _server.Reply(HttpStatusCode.OK, Json("shift-closing")).Reply(HttpStatusCode.OK, Json("shift-closed"));
+        var id = Guid.Parse("01a200d5-2078-71fa-a629-421d8d7f742a");
+
+        var blind = await Client().GetShiftClosingAsync(id);
+        var closed = await Client().CloseShiftAsync(new CloseShiftRequest(id, 267500m, null));
+
+        Assert.Equal($"/api/v1/shifts/{id}/closing", _server.Requests[0].Request.RequestUri!.PathAndQuery);
+        Assert.Equal(Samples.DeviceId.ToString(), _server.Requests[0].Request.Headers.GetValues(NodeApiClient.DeviceHeader).Single());
+        Assert.True(blind.BlindCount);
+        Assert.False(blind.HasFigures);
+        Assert.Null(blind.Totals);
+        Assert.Equal(("TK01-SH-202611-000001", "Test user", 200000m), (blind.Number, blind.CashierName, blind.OpeningCash));
+        Assert.Contains("\"counted_cash\":\"267500.0000\"", _server.Requests[1].Body);
+        Assert.True(closed.IsClosed);
+        Assert.Equal((268000m, 267500m, -500m), (closed.ExpectedCash!.Value, closed.CountedCash!.Value, closed.Difference!.Value));
+        Assert.Equal(["DEBIT", "QRIS", "TRANSFER", "KREDIT"], closed.NonCash!.Select(m => m.Name));
+        Assert.Equal((55000m, 2), (closed.NonCash![3].Amount, closed.NonCash[3].Count));
+        Assert.Equal(DateTimeKind.Utc, closed.ClosedAt!.Value.Kind);
+        var report = ReceiptService.ToShiftReportData(closed);
+        Assert.Equal(40000m, report.Totals.CashSales);
+        Assert.Null(report.ClosedByName);                                                   // closed by the cashier
+        Assert.Equal("TOKO DEV", report.HeaderLines[0]);
+    }
     [Fact]
     public async Task Customer_search()
     {

@@ -130,6 +130,50 @@ public sealed record SaleWarningInfo(
 public sealed record SaleResult(SaleSummary Sale, IReadOnlyList<SaleWarningInfo> Warnings, bool Replayed);
 
 /// <summary>Node Service calls used by the cashier screens.</summary>
+
+/// <summary>
+/// "Tutup Shift" data from the Node Service. Before closing with blind count the figures are null (count first);
+/// after closing every figure is frozen. Times are UTC; <see cref="TimeZone"/> is the branch's.
+/// </summary>
+public sealed record ShiftSummary(
+    Guid Id,
+    string Number,
+    Guid CashierId,
+    string CashierName,
+    string Status,
+    DateTime OpenedAt,
+    DateTime? ClosedAt,
+    Guid? ClosedById,
+    string? ClosedByName,
+    string TimeZone,
+    bool BlindCount,
+    decimal OpeningCash,
+    decimal? CashSales,
+    decimal? CreditDownPayments,
+    decimal? ReceivableCash,
+    decimal? CashExpenses,
+    IReadOnlyList<Pos.Shared.Sales.ShiftMethodTotal>? NonCash,
+    int? SaleCount,
+    int? CancellationCount,
+    decimal? ExpectedCash,
+    decimal? CountedCash,
+    decimal? Difference,
+    string? Notes,
+    ReceiptText? Receipt)
+{
+    public bool IsClosed => Status == "CLOSED";
+
+    /// <summary>The figures are known (always after closing; before closing only without blind count).</summary>
+    public bool HasFigures => ExpectedCash is not null;
+
+    public Pos.Shared.Sales.ShiftTotals? Totals => HasFigures
+        ? new(OpeningCash, CashSales ?? 0m, CreditDownPayments ?? 0m, ReceivableCash ?? 0m, CashExpenses ?? 0m,
+            NonCash ?? [], SaleCount ?? 0, CancellationCount ?? 0)
+        : null;
+}
+
+/// <param name="Notes">Required when closing another cashier's shift.</param>
+public sealed record CloseShiftRequest(Guid ShiftId, decimal CountedCash, string? Notes);
 public interface INodeApi
 {
     Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default);
@@ -138,6 +182,12 @@ public interface INodeApi
     Task<ShiftInfo?> GetCurrentShiftAsync(CancellationToken ct = default);
 
     Task<ShiftInfo> OpenShiftAsync(decimal openingCash, CancellationToken ct = default);
+
+    /// <summary>"Tutup Shift" form data (figures hidden with blind count until closed).</summary>
+    Task<ShiftSummary> GetShiftClosingAsync(Guid shiftId, CancellationToken ct = default);
+
+    /// <summary>Closes the shift; the same request again returns the stored summary.</summary>
+    Task<ShiftSummary> CloseShiftAsync(CloseShiftRequest request, CancellationToken ct = default);
 
     Task<IReadOnlyList<ProductItem>> SearchProductsAsync(string query, CancellationToken ct = default);
 
@@ -214,6 +264,12 @@ public interface IDialogService
 
     /// <summary>The receipt on screen (no printer, or printing failed) with the reason.</summary>
     void ShowReceiptPreview(string message, IReadOnlyList<string> lines);
+
+    /// <summary>A plain message with OK.</summary>
+    void ShowMessage(string message);
+
+    /// <summary>The "Tutup Shift" dialog; true when the shift was closed in it.</summary>
+    bool ShowCloseShift(ViewModels.CloseShiftViewModel closeShift);
 
     /// <summary>"Export to File": where to save; null when cancelled.</summary>
     string? AskSaveFile(string suggestedFileName);

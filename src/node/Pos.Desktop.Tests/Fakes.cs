@@ -195,6 +195,37 @@ public sealed class FakeNodeApi : INodeApi
         });
     }
 
+
+    // ---- tutup shift ------------------------------------------------------------------------------
+
+    /// <summary>Returned by GetShiftClosingAsync (default: <see cref="Shifts.Blind"/>).</summary>
+    public Func<Guid, ShiftSummary>? OnShiftClosing { get; set; }
+
+    /// <summary>Answers CloseShiftAsync (default: <see cref="Shifts.Closed"/> with the counted cash and notes).</summary>
+    public Func<CloseShiftRequest, ShiftSummary>? OnCloseShift { get; set; }
+
+    public List<CloseShiftRequest> CloseRequests { get; } = [];
+
+    /// <summary>Thrown by the next CloseShiftAsync (then cleared), e.g. a network failure.</summary>
+    public Exception? NextCloseFailure { get; set; }
+
+    public Task<ShiftSummary> GetShiftClosingAsync(Guid shiftId, CancellationToken ct = default)
+    {
+        Calls.Add($"shift-closing:{shiftId}");
+        return Task.FromResult(OnShiftClosing?.Invoke(shiftId) ?? Shifts.Blind(shiftId));
+    }
+
+    public Task<ShiftSummary> CloseShiftAsync(CloseShiftRequest request, CancellationToken ct = default)
+    {
+        Calls.Add($"close-shift:{request.ShiftId}:{request.CountedCash}");
+        CloseRequests.Add(request);
+        if (NextCloseFailure is { } failure)
+        {
+            NextCloseFailure = null;
+            throw failure;
+        }
+        return Task.FromResult(OnCloseShift?.Invoke(request) ?? Shifts.Closed(request.ShiftId, request.CountedCash, request.Notes));
+    }
     // ---- location transfers -----------------------------------------------------------------------
 
     /// <summary>Base stock at the source per product (default 30) for the preview.</summary>
@@ -327,6 +358,21 @@ public sealed class FakeDialogs : IDialogService
 
     public List<(string Title, string Message, IReadOnlyList<string> Lines)> Documents { get; } = [];
 
+
+    public List<string> Messages { get; } = [];
+
+    public void ShowMessage(string message) { Asked.Add($"message:{message}"); Messages.Add(message); }
+
+    /// <summary>Plays the user in the Tutup Shift dialog; returns whether the shift got closed. Default: not closed.</summary>
+    public Func<ViewModels.CloseShiftViewModel, bool>? OnCloseShift { get; set; }
+    public List<ViewModels.CloseShiftViewModel> CloseShiftDialogs { get; } = [];
+
+    public bool ShowCloseShift(ViewModels.CloseShiftViewModel closeShift)
+    {
+        Asked.Add("close-shift");
+        CloseShiftDialogs.Add(closeShift);
+        return OnCloseShift?.Invoke(closeShift) ?? false;
+    }
     /// <summary>The action button text offered per detail (null = none).</summary>
     public List<string?> DocumentActions { get; } = [];
 
@@ -439,6 +485,45 @@ public sealed class MemoryLastSaleStore : ILastSaleStore
     public void Save(Guid saleId) => SaleId = saleId;
 }
 
+
+/// <summary>Shift summaries as the Node Service returns them (opened 07:00 WIB, closed 15:05 WIB).</summary>
+public static class Shifts
+{
+    public static readonly IReadOnlyList<Pos.Shared.Sales.ShiftMethodTotal> Methods =
+    [
+        new("DEBIT", "DEBIT", 20000m, 1), new("QRIS", "QRIS", 40000m, 1),
+        new("TRANSFER", "TRANSFER", 50000m, 1), new("CREDIT", "KREDIT", 55000m, 2),
+    ];
+
+    /// <summary>Blind count, open: header only, no figures.</summary>
+    public static ShiftSummary Blind(Guid id, Guid? cashierId = null) => new(
+        id, "TK01-SH-202611-000007", cashierId ?? Samples.UserId, "Kasir Satu", "OPEN",
+        new DateTime(2026, 11, 22, 0, 0, 0, DateTimeKind.Utc), null, null, null, "Asia/Jakarta", true, 200000m,
+        null, null, null, null, null, null, null, null, null, null, null,
+        new ReceiptText("TOKO DEV", "Jl. Merdeka No. 1", null, null, null, null));
+
+    /// <summary>Blind count off, open: the running figures (expected 268.000).</summary>
+    public static ShiftSummary Open(Guid id, Guid? cashierId = null) => Blind(id, cashierId) with
+    {
+        BlindCount = false,
+        CashSales = 40000m, CreditDownPayments = 15000m, ReceivableCash = 25000m, CashExpenses = 12000m,
+        NonCash = Methods, SaleCount = 7, CancellationCount = 2, ExpectedCash = 268000m,
+    };
+
+    /// <summary>Closed with the counted cash: expected 268.000.</summary>
+    public static ShiftSummary Closed(Guid id, decimal counted, string? notes = null, Guid? cashierId = null, Guid? closedBy = null) =>
+        Open(id, cashierId) with
+        {
+            BlindCount = true,
+            Status = "CLOSED",
+            ClosedAt = new DateTime(2026, 11, 22, 8, 5, 0, DateTimeKind.Utc),
+            ClosedById = closedBy ?? cashierId ?? Samples.UserId,
+            ClosedByName = closedBy is null ? "Kasir Satu" : "Admin Toko Dev",
+            CountedCash = counted,
+            Difference = counted - 268000m,
+            Notes = notes,
+        };
+}
 public static class Receipts
 {
     public static ReceiptService Service(

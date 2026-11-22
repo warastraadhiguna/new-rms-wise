@@ -99,6 +99,27 @@ public sealed partial class SalesViewModel : FormTab
 
     public bool HasItems => !_cart.IsEmpty;
 
+    // ---- tutup shift ----------------------------------------------------------------------------
+
+    /// <summary>Ctrl+F12 "Tutup Shift" (confirmed here); the main window opens the dialog.</summary>
+    public event EventHandler? CloseShiftRequested;
+
+    /// <summary>Ctrl+F12: only with an empty transaction, after a confirmation.</summary>
+    [RelayCommand]
+    private void RequestCloseShift()
+    {
+        if (HasItems)
+        {
+            StatusMessage = "Selesaikan (Bayar) atau batalkan transaksi dulu sebelum tutup shift.";
+            RequestFocus("search");
+            return;
+        }
+        if (_dialogs.Confirm("Tutup shift sekarang? Setelah ditutup Anda akan keluar ke layar login."))
+            CloseShiftRequested?.Invoke(this, EventArgs.Empty);
+        else
+            RequestFocus("search");
+    }
+
     // ---- search ---------------------------------------------------------------------------------
 
     partial void OnSearchTextChanged(string value)

@@ -115,6 +115,16 @@ public sealed class WpfDialogService(INodeApi api) : IDialogService
     public void ShowReceiptPreview(string message, IReadOnlyList<string> lines) =>
         Show(new ReceiptPreviewDialog(), new ReceiptPreviewViewModel(message, lines));
 
+    public void ShowMessage(string message) =>
+        MessageBox.Show(Application.Current?.MainWindow!, message, "Informasi", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    /// <summary>True when the shift is closed, also when the window was closed with × after saving.</summary>
+    public bool ShowCloseShift(CloseShiftViewModel closeShift)
+    {
+        Show(new CloseShiftDialog(), closeShift);
+        return closeShift.IsClosed;
+    }
+
     private static bool Show(Window window, object viewModel)
     {
         window.DataContext = viewModel;

@@ -68,7 +68,10 @@ public partial class App : Application
             StockCheck: () => sp.GetRequiredService<StockCheckViewModel>(),
             StockCard: () => sp.GetRequiredService<StockCardViewModel>(),
             LocationTransfer: () => sp.GetRequiredService<LocationTransferViewModel>(),
-            LocationTransferList: () => sp.GetRequiredService<LocationTransferListViewModel>())));
+            LocationTransferList: () => sp.GetRequiredService<LocationTransferListViewModel>(),
+            CloseShift: shift => new CloseShiftViewModel(sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>(),
+                sp.GetRequiredService<ReceiptService>(), shift, sp.GetRequiredService<SessionState>().User?.Id ?? Guid.Empty)),
+            sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INavigator>()));
         services.AddTransient<LoginWindow>();
         services.AddTransient<OpenShiftWindow>();
         services.AddTransient<MainWindow>();

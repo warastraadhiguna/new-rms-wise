@@ -35,11 +35,16 @@
         <!-- Menu per group as in RMS 2; a group is shown only when the user has its permission. -->
         <Menu x:Name="MainMenu" DockPanel.Dock="Top" Background="#EEF3FA" Padding="2">
             <MenuItem x:Name="SalesMenu" Header="_Penjualan"
-                      Visibility="{Binding HasSalesMenu, Converter={StaticResource BoolToVisibility}}">
+                      Visibility="{Binding ShowSalesMenu, Converter={StaticResource BoolToVisibility}}">
                 <MenuItem x:Name="SalesFormMenuItem" Header="Form Penjualan" InputGestureText="F2"
-                          Command="{Binding OpenSalesFormCommand}" IsEnabled="{Binding CanSell}" />
+                          Command="{Binding OpenSalesFormCommand}" IsEnabled="{Binding CanSell}"
+                          Visibility="{Binding HasSalesMenu, Converter={StaticResource BoolToVisibility}}" />
                 <MenuItem x:Name="SalesLockMenuItem" Header="{Binding SalesLockText}" IsEnabled="False" FontStyle="Italic"
                           Visibility="{Binding IsSalesLocked, Converter={StaticResource BoolToVisibility}}" />
+                <Separator Visibility="{Binding CanCloseShift, Converter={StaticResource BoolToVisibility}}" />
+                <MenuItem x:Name="CloseShiftMenuItem" Header="Tutup Shift" InputGestureText="Ctrl+F12"
+                          Command="{Binding CloseShiftCommand}"
+                          Visibility="{Binding CanCloseShift, Converter={StaticResource BoolToVisibility}}" />
             </MenuItem>
             <MenuItem x:Name="StockMenu" Header="_Stok"
                       Visibility="{Binding ShowStockMenu, Converter={StaticResource BoolToVisibility}}">

@@ -48,8 +48,12 @@ public sealed partial class LoginViewModel(INodeApi api, SessionState session, I
             session.SetLogin(login);
 
             // Only users who sell need a shift; store/warehouse staff without sale.create go straight to the menu.
+            // A non-seller with shift.close still learns about the shift open on this PC, so it can be closed.
             if (!session.Has(Pos.Shared.Auth.Permissions.SaleCreate))
             {
+                if (session.Has(Pos.Shared.Auth.Permissions.ShiftClose)
+                    && await api.GetCurrentShiftAsync() is { } open && open.CashierId != login.User.Id)
+                    session.ForeignShift = open;
                 navigator.ShowMain();
                 return;
             }
@@ -96,8 +100,9 @@ public sealed partial class LoginViewModel(INodeApi api, SessionState session, I
         }
     }
 
-    /// <summary>Users who have work besides selling: stock screens or transfers.</summary>
+    /// <summary>Users who have work besides selling: stock screens, transfers, or closing that shift (shift.close).</summary>
     private bool CanWorkWithoutSelling() =>
         session.Has(Pos.Shared.Auth.Permissions.StockView)
-        || session.Has(Pos.Shared.Auth.Permissions.StockTransfer);
+        || session.Has(Pos.Shared.Auth.Permissions.StockTransfer)
+        || session.Has(Pos.Shared.Auth.Permissions.ShiftClose);
 }

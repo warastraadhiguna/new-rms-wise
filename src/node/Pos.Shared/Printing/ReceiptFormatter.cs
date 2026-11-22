@@ -140,7 +140,7 @@ public static class ReceiptFormatter
     }
 
     /// <summary>Label on the left, value on the right; the value moves to its own line when both do not fit.</summary>
-    private static IEnumerable<string> Row(string label, string value, int width)
+    internal static IEnumerable<string> Row(string label, string value, int width)
     {
         if (label.Length + 1 + value.Length <= width)
             return [label + value.PadLeft(width - label.Length)];
@@ -148,10 +148,10 @@ public static class ReceiptFormatter
     }
 
     /// <summary>"Kasir  : Kasir Satu", cut at the paper width.</summary>
-    private static string Field(string label, string value, int width) =>
+    internal static string Field(string label, string value, int width) =>
         Fit($"{label.PadRight(FieldLabelWidth)}: {value}", width);
 
-    private static IEnumerable<string> Centered(string text, int width) =>
+    internal static IEnumerable<string> Centered(string text, int width) =>
         Wrap(text, width).Select(l => new string(' ', (width - l.Length) / 2) + l);
 
     /// <summary>Greedy word wrap; words longer than the line are cut. Blank text gives one empty line.</summary>
@@ -189,7 +189,7 @@ public static class ReceiptFormatter
         return lines;
     }
 
-    private static string Fit(string text, int width) => text.Length <= width ? text : text[..width];
+    internal static string Fit(string text, int width) => text.Length <= width ? text : text[..width];
 }
 
 /// <summary>

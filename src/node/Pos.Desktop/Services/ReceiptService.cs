@@ -103,6 +103,54 @@ public sealed class ReceiptService(
         }
     }
 
+    /// <summary>
+    /// "Laporan Tutup Shift" to the same printer (no drawer pulse); without a printer, or when printing fails, on screen.
+    /// Never throws: the shift is already closed.
+    /// </summary>
+    public ReceiptPrintResult PrintShiftReport(ShiftSummary shift, bool reprint = false)
+    {
+        ArgumentNullException.ThrowIfNull(shift);
+        var lines = ShiftReportFormatter.Format(ToShiftReportData(shift), settings.Width, reprint);
+
+        if (string.IsNullOrWhiteSpace(settings.PrinterName))
+        {
+            const string message = "Printer struk belum diatur (printer_name di settings.json). Laporan tutup shift ditampilkan di layar.";
+            dialogs.ShowReceiptPreview(message, lines);
+            return new ReceiptPrintResult(false, shift.Number, message);
+        }
+        try
+        {
+            printer.PrintRaw(settings.PrinterName, EscPos.Receipt(lines, openDrawer: false), $"Tutup Shift {shift.Number}");
+            return new ReceiptPrintResult(true, shift.Number, null);
+        }
+        catch (PrinterException ex)
+        {
+            var message = $"Gagal mencetak ke printer \"{settings.PrinterName}\": {ex.Message} " +
+                          "Laporan ditampilkan di layar; shift tetap tertutup.";
+            dialogs.ShowReceiptPreview(message, lines);
+            return new ReceiptPrintResult(false, shift.Number, message);
+        }
+    }
+
+    /// <summary>A closed shift → report fields (branch time); "Ditutup oleh" only when not the cashier.</summary>
+    public static ShiftReportData ToShiftReportData(ShiftSummary shift)
+    {
+        ArgumentNullException.ThrowIfNull(shift);
+        if (shift.Totals is not { } totals || shift.CountedCash is not { } counted || shift.ClosedAt is not { } closedAt)
+            throw new InvalidOperationException($"Shift {shift.Number} is not closed yet.");
+        return new ShiftReportData(
+            shift.Receipt?.HeaderLines ?? [],
+            shift.Number,
+            shift.CashierName,
+            BranchTime.ToLocal(shift.OpenedAt, shift.TimeZone),
+            BranchTime.ToLocal(closedAt, shift.TimeZone),
+            shift.ClosedById is { } by && by != shift.CashierId ? shift.ClosedByName : null,
+            shift.Notes,
+            totals,
+            shift.ExpectedCash!.Value,
+            counted);
+    }
+
     /// <summary>Server sale → receipt fields; the time is shown in the selling branch's timezone.</summary>
     public static ReceiptData ToReceiptData(SaleDetail sale)
     {

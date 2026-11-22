@@ -13,7 +13,8 @@ public sealed record FormFactories(
     Func<StockCheckViewModel>? StockCheck = null,
     Func<StockCardViewModel>? StockCard = null,
     Func<LocationTransferViewModel>? LocationTransfer = null,
-    Func<LocationTransferListViewModel>? LocationTransferList = null);
+    Func<LocationTransferListViewModel>? LocationTransferList = null,
+    Func<ShiftInfo, CloseShiftViewModel>? CloseShift = null);
 
 /// <summary>
 /// The main window: a menu per group as in RMS 2 (Penjualan, Stok, Laporan: Kartu Stok), shown by permission (sale.create,
@@ -24,16 +25,20 @@ public sealed partial class MainViewModel : ObservableObject
 {
     private readonly SessionState _session;
     private readonly FormFactories _forms;
+    private readonly IDialogService? _dialogs;
+    private readonly INavigator? _navigator;
 
     public MainViewModel(SessionState session, Func<SalesViewModel>? salesFactory = null)
         : this(session, new FormFactories(salesFactory))
     {
     }
 
-    public MainViewModel(SessionState session, FormFactories forms)
+    public MainViewModel(SessionState session, FormFactories forms, IDialogService? dialogs = null, INavigator? navigator = null)
     {
         _session = session;
         _forms = forms;
+        _dialogs = dialogs;
+        _navigator = navigator;
         Tabs.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(SalesForm));
@@ -127,7 +132,51 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (!CanSell)
             return;
-        Show(SalesForm ?? _forms.Sales!());
+        if (SalesForm is { } open)
+        {
+            Show(open);
+            return;
+        }
+        var form = _forms.Sales!();
+        form.CloseShiftRequested += (_, _) => CloseShiftConfirmed();
+        Show(form);
+    }
+
+    // ---- Tutup Shift ------------------------------------------------------------------------------
+
+    /// <summary>The shift open on this PC: the user's own (or a shared one) or another cashier's that locks selling.</summary>
+    private ShiftInfo? ShiftOnThisPc => _session.Shift ?? _session.ForeignShift;
+
+    /// <summary>Menu Penjualan → Tutup Shift: the shift's cashier, or a user with shift.close.</summary>
+    public bool CanCloseShift =>
+        _forms.CloseShift is not null && ShiftOnThisPc is { } shift
+        && (shift.CashierId == _session.User?.Id || _session.Has(Permissions.ShiftClose));
+
+    /// <summary>Menu "Penjualan": sellers, and whoever may close the shift open on this PC.</summary>
+    public bool ShowSalesMenu => HasSalesMenu || CanCloseShift;
+
+    /// <summary>Menu Penjualan → Tutup Shift (a deliberate menu choice: no extra confirmation).</summary>
+    [RelayCommand]
+    private void CloseShift() => CloseShiftConfirmed();
+
+    /// <summary>
+    /// Opens the Tutup Shift dialog (refused while Form Penjualan still has a transaction). When the shift was closed
+    /// the session ends and the login screen is shown.
+    /// </summary>
+    private void CloseShiftConfirmed()
+    {
+        if (!CanCloseShift || _dialogs is null || ShiftOnThisPc is not { } shift)
+            return;
+        if (SalesForm is { HasItems: true })
+        {
+            _dialogs.ShowMessage("Masih ada transaksi di Form Penjualan. Selesaikan (Bayar) atau batalkan dulu sebelum tutup shift.");
+            return;
+        }
+        if (!_dialogs.ShowCloseShift(_forms.CloseShift!(shift)))
+            return;
+
+        _session.Clear();
+        _navigator?.ShowLogin();
     }
 
     /// <summary>Menu Stok → Stok Total.</summary>

@@ -38,7 +38,8 @@ public sealed class DatabaseFixture : IAsyncLifetime
 
     public TokenService Tokens { get; private set; } = null!;
 
-    public static readonly string[] CashierPermissions = [Permissions.ShiftOpen, Permissions.ShiftClose, Permissions.SaleCreate];
+    /// <summary>The seeded CASHIER role: a cashier closes their own shift without shift.close (9d).</summary>
+    public static readonly string[] CashierPermissions = [Permissions.ShiftOpen, Permissions.SaleCreate];
 
     public async Task InitializeAsync()
     {

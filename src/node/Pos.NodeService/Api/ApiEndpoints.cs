@@ -39,9 +39,13 @@ public static class ApiEndpoints
                 return Results.Created($"/api/v1/shifts/{shift.Id}", shift);
             })
             .RequireAuthorization(Permissions.ShiftOpen);
-        shifts.MapPost("/close", async (CloseShiftRequest request, ShiftService service, CancellationToken ct) =>
-                Results.Ok(await service.CloseAsync(request, ct)))
-            .RequireAuthorization(Permissions.ShiftClose);
+        // Tutup Shift: the cashier of the shift, or a user with shift.close (then notes are required).
+        shifts.MapGet("/{shiftId:guid}/closing", (Guid shiftId, ShiftService service, ClaimsPrincipal user, CancellationToken ct) =>
+                service.GetClosingAsync(shiftId, user.UserId(), user.HasPermission(Permissions.ShiftClose), ct))
+            .RequireAuthorization();
+        shifts.MapPost("/close", async (CloseShiftRequest request, ShiftService service, ClaimsPrincipal user, CancellationToken ct) =>
+                Results.Ok(await service.CloseAsync(request, user.UserId(), user.HasPermission(Permissions.ShiftClose), ct)))
+            .RequireAuthorization();
 
         // 201 when created, 200 when the same sale id was already stored (idempotent retry from the client).
         api.MapPost("/sales", async (CreateSaleRequest request, SaleService service, HttpContext http, ClaimsPrincipal user, CancellationToken ct) =>

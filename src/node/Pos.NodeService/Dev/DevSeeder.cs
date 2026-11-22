@@ -199,8 +199,9 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
               (@s2, NULL, 'rounding.cash_mode', '"nearest"'),
               (@s3, NULL, 'currency.decimals', '0'),
               (@s4, NULL, 'returns.window_days', '7'),
-              (@s7, NULL, 'stock.expiry_warning_days', '30')
-            """, new { s1 = Id(), s2 = Id(), s3 = Id(), s4 = Id(), s7 = Id() });
+              (@s7, NULL, 'stock.expiry_warning_days', '30'),
+              (@s8, NULL, 'shift.blind_count', 'true')
+            """, new { s1 = Id(), s2 = Id(), s3 = Id(), s4 = Id(), s7 = Id(), s8 = Id() });
         foreach (var (key, value) in ReceiptSettings)
         {
             await Exec("INSERT INTO settings (id, branch_id, setting_key, setting_value) VALUES (@id, NULL, @key, JSON_QUOTE(@value))",
@@ -209,7 +210,8 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
         await Exec("INSERT INTO reasons (id, type, name) VALUES (@id, 'ADJUSTMENT', 'Saldo awal (OPENING)')", new { id = Id() });
     }
 
-    private const string CashierPermissions = """["shift.open","shift.close","sale.create"]""";
+    /// <summary>A cashier closes their own shift without a permission; shift.close = closing another cashier's shift (9d).</summary>
+    private const string CashierPermissions = """["shift.open","sale.create"]""";
     /// <summary>OWNER and HQ_ADMIN only: "*" includes stock.rebuild.</summary>
     private const string FullPermissions = """["*"]""";
 
@@ -339,6 +341,18 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
               AND NOT JSON_CONTAINS(permissions, '"stock.transfer"') AND NOT JSON_CONTAINS(permissions, '"*"')
             """, new { });
         changes += await SeedWarehouseStaffAsync(c, tx, ct);
+        // 9d: shift.close now means "close another cashier's shift"; cashiers close their own without it.
+        changes += await Exec(
+            """
+            UPDATE roles SET permissions = JSON_REMOVE(permissions, JSON_UNQUOTE(JSON_SEARCH(permissions, 'one', 'shift.close')))
+            WHERE code = 'CASHIER' AND JSON_TYPE(permissions) = 'ARRAY' AND JSON_CONTAINS(permissions, '"shift.close"')
+            """, new { });
+        changes += await Exec(
+            """
+            INSERT INTO settings (id, branch_id, setting_key, setting_value)
+            SELECT @id, NULL, 'shift.blind_count', 'true' FROM DUAL
+            WHERE NOT EXISTS (SELECT 1 FROM settings WHERE branch_id IS NULL AND setting_key = 'shift.blind_count')
+            """, new { id = Guid.CreateVersion7() });
         changes += await Exec(
             """
             INSERT INTO settings (id, branch_id, setting_key, setting_value)

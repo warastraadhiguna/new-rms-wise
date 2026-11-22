@@ -130,7 +130,7 @@ public class ShiftApiTests(DatabaseFixture db) : IAsyncLifetime
         var (_, opened) = await Open(device);
         await Close(device, new { ShiftId = opened.Id(), CountedCash = 200000m });
 
-        var (again, againBody) = await Close(device, new { ShiftId = opened.Id(), CountedCash = 200000m });
+        var (again, againBody) = await Close(device, new { ShiftId = opened.Id(), CountedCash = 199000m });   // same count = retry (200)
         var (unknown, unknownBody) = await Close(device, new { ShiftId = Guid.CreateVersion7(), CountedCash = 0m });
 
         Assert.Equal((HttpStatusCode.Conflict, "shift_already_closed"), (again, againBody.Str("code")));

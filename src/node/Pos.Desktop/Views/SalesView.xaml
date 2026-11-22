@@ -18,6 +18,7 @@
         <KeyBinding Key="F8" Command="{Binding ChangeQtyCommand}" />
         <KeyBinding Key="Delete" Modifiers="Shift" Command="{Binding DeleteLineCommand}" />
         <KeyBinding Key="F12" Command="{Binding CancelTransactionCommand}" />
+        <KeyBinding Key="F12" Modifiers="Control" Command="{Binding RequestCloseShiftCommand}" />
         <KeyBinding Key="Escape" Command="{Binding EscapeCommand}" />
         <KeyBinding Key="O" Modifiers="Ctrl+Shift" Command="{Binding UnlockDeleteCommand}" />
     </UserControl.InputBindings>

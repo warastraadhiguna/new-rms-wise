@@ -33,6 +33,12 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
         }
     }
 
+    public Task<ShiftSummary> GetShiftClosingAsync(Guid shiftId, CancellationToken ct = default) =>
+        SendAsync<ShiftSummary>(HttpMethod.Get, $"api/v1/shifts/{shiftId}/closing", null, authenticated: true, withDevice: true, ct);
+
+    public Task<ShiftSummary> CloseShiftAsync(CloseShiftRequest request, CancellationToken ct = default) =>
+        SendAsync<ShiftSummary>(HttpMethod.Post, "api/v1/shifts/close", request, authenticated: true, withDevice: true, ct);
+
     public Task<ShiftInfo> OpenShiftAsync(decimal openingCash, CancellationToken ct = default) =>
         SendAsync<ShiftInfo>(HttpMethod.Post, "api/v1/shifts/open", new { OpeningCash = openingCash },
             authenticated: true, withDevice: true, ct);

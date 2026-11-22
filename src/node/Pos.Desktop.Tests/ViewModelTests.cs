@@ -114,6 +114,21 @@ public class LoginViewModelTests
     }
 
     [Fact]
+    public async Task A_supervisor_with_shift_close_is_let_in_to_close_the_foreign_shift()
+    {
+        _api.OnLogin = (_, _) => Samples.LoginWith("shift.close");
+        _api.OnCurrentShift = () => Samples.Shift(cashierId: Samples.OtherUserId);
+        var vm = Vm();
+        vm.Username = "spv";
+        vm.Password = "x";
+
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal(["main"], _navigator.Shown);
+        Assert.NotNull(_session.ForeignShift);
+    }
+
+    [Fact]
     public async Task Shift_share_sells_on_the_open_shift_of_another_cashier()
     {
         _api.OnLogin = (_, _) => Samples.LoginWith("shift.share", "sale.create");

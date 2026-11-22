@@ -124,7 +124,8 @@ public sealed class SaleDetailService(DbConnectionFactory connections)
     /// Branch row wins over the global row. Missing store name → the node's name; missing footer_1 → the RMS 2
     /// thank-you line; other missing fields are empty. An empty string means "print nothing there".
     /// </summary>
-    private static async Task<ReceiptTextDto> LoadReceiptTextAsync(MySqlConnection c, Guid branchId, string nodeName, CancellationToken ct)
+    internal static async Task<ReceiptTextDto> LoadReceiptTextAsync(
+        MySqlConnection c, Guid branchId, string nodeName, CancellationToken ct, MySqlTransaction? tx = null)
     {
         var rows = await c.QueryAsync<(string Key, string Value)>(new CommandDefinition(
             """
@@ -132,7 +133,7 @@ public sealed class SaleDetailService(DbConnectionFactory connections)
             WHERE setting_key IN @Keys
               AND deleted_at IS NULL AND (branch_id = @branchId OR branch_id IS NULL)
             ORDER BY branch_id IS NULL
-            """, new { Keys = AllKeys, branchId }, cancellationToken: ct));
+            """, new { Keys = AllKeys, branchId }, tx, cancellationToken: ct));
         var values = rows.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.First().Value);
 
         string? Get(string key, string? fallback = null) =>
