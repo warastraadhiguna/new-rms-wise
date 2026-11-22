@@ -73,6 +73,13 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
             $"api/v1/sales?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}&q={Uri.EscapeDataString(q ?? "")}&offset={offset}&limit={limit}",
             null, authenticated: true, withDevice: false, ct);
 
+    public async Task<IReadOnlyList<ReasonItem>> GetReasonsAsync(string type, CancellationToken ct = default) =>
+        await SendAsync<List<ReasonItem>>(HttpMethod.Get, "api/v1/reasons?type=" + Uri.EscapeDataString(type), null,
+            authenticated: true, withDevice: false, ct);
+
+    public Task<SaleVoidInfo> VoidSaleAsync(Guid saleId, VoidSaleRequest request, CancellationToken ct = default) =>
+        SendAsync<SaleVoidInfo>(HttpMethod.Post, $"api/v1/sales/{saleId}/void", request, authenticated: true, withDevice: false, ct);
+
     public async Task<IReadOnlyList<StockLocation>> GetStockLocationsAsync(CancellationToken ct = default) =>
         await SendAsync<List<StockLocation>>(HttpMethod.Get, "api/v1/stock/locations", null, authenticated: true, withDevice: false, ct);
 

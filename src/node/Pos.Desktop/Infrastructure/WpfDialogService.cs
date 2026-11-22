@@ -119,6 +119,12 @@ public sealed class WpfDialogService(INodeApi api) : IDialogService
         MessageBox.Show(Application.Current?.MainWindow!, message, "Informasi", MessageBoxButton.OK, MessageBoxImage.Information);
 
     /// <summary>True when the shift is closed, also when the window was closed with × after saving.</summary>
+    public ReasonChoice? AskReason(string title, string prompt, IReadOnlyList<ReasonItem> reasons)
+    {
+        var vm = new ReasonDialogViewModel(title, prompt, reasons);
+        return Show(new ReasonDialog(), vm) ? vm.Result : null;
+    }
+
     public bool ShowCloseShift(CloseShiftViewModel closeShift)
     {
         Show(new CloseShiftDialog(), closeShift);

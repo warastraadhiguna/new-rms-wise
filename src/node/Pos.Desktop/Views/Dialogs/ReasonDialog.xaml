@@ -1,0 +1,37 @@
+<Window x:Class="Pos.Desktop.Views.Dialogs.ReasonDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:infra="clr-namespace:Pos.Desktop.Infrastructure"
+        Title="{Binding Title}" Width="440" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontFamily="Tahoma" FontSize="13"
+        infra:DialogCloser.DialogResult="{Binding DialogResult}"
+        FocusManager.FocusedElement="{Binding ElementName=ReasonBox}">
+    <!-- Enter = OK, Esc = Batal (both inputs required). -->
+    <Window.InputBindings>
+        <KeyBinding Key="Enter" Command="{Binding OkCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CancelCommand}" />
+    </Window.InputBindings>
+    <StackPanel Margin="16">
+        <TextBlock x:Name="PromptText" Text="{Binding Prompt}" TextWrapping="Wrap" Margin="0,0,0,8" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition /><RowDefinition />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Alasan" VerticalAlignment="Center" />
+            <ComboBox x:Name="ReasonBox" Grid.Column="1" ItemsSource="{Binding Reasons}" DisplayMemberPath="Name"
+                      SelectedItem="{Binding SelectedReason}" Margin="0,0,0,6" />
+            <TextBlock Grid.Row="1" Text="Keterangan" VerticalAlignment="Center" />
+            <TextBox x:Name="NotesBox" Grid.Row="1" Grid.Column="1" Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Padding="3" />
+        </Grid>
+        <TextBlock x:Name="ErrorText" Text="{Binding ErrorMessage}" Foreground="Firebrick" TextWrapping="Wrap" Margin="0,6,0,0" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="OkButton" Content="OK [Enter]" Command="{Binding OkCommand}" Padding="12,3" Margin="0,0,8,0" />
+            <Button x:Name="CancelButton" Content="Batal [Esc]" Command="{Binding CancelCommand}" Padding="12,3" />
+        </StackPanel>
+    </StackPanel>
+</Window>

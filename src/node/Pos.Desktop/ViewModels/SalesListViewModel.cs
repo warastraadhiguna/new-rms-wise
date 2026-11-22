@@ -50,16 +50,19 @@ public sealed partial class SalesListViewModel : FormTab
     private readonly INodeApi _api;
     private readonly IDialogService _dialogs;
     private readonly ReceiptService _receipts;
+    private readonly SessionState _session;
+    private (Guid SaleId, Guid VoidId, ReasonChoice Reason, string? ApprovalToken)? _pendingVoid;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private CancellationTokenSource? _searchCts;
     private int _focusSequence;
 
-    public SalesListViewModel(INodeApi api, IDialogService dialogs, ReceiptService receipts,
+    public SalesListViewModel(INodeApi api, IDialogService dialogs, ReceiptService receipts, SessionState session,
         Func<DateOnly>? today = null, Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
         _api = api;
         _dialogs = dialogs;
         _receipts = receipts;
+        _session = session;
         _delay = delay ?? Task.Delay;
         var now = (today ?? (() => DateOnly.FromDateTime(DateTime.Now)))();
         _fromDate = now.ToDateTime(TimeOnly.MinValue);
@@ -189,6 +192,63 @@ public sealed partial class SalesListViewModel : FormTab
         }
         catch (NodeApiException ex)
         {
+            StatusMessage = ex.Message;
+        }
+        RequestFocus("rows");
+    }
+
+    /// <summary>
+    /// Shift+Del "Void" (replaces RMS 2 Hapus): only while the nota's shift is open (otherwise Retur). Alasan + Keterangan;
+    /// without sale.void a supervisor approves. A retry after a network failure sends the same void (same id).
+    /// </summary>
+    [RelayCommand]
+    private async Task VoidAsync()
+    {
+        if (SelectedRow is not { } row)
+            return;
+        if (row.IsVoid)
+        {
+            StatusMessage = $"Nota {row.Number} sudah di-void.";
+            return;
+        }
+        if (!row.Row.ShiftOpen)
+        {
+            StatusMessage = "Shift sudah ditutup, gunakan Retur [F12].";
+            return;
+        }
+
+        try
+        {
+            if (_pendingVoid is not { } pending || pending.SaleId != row.Id)
+            {
+                var reasons = await _api.GetReasonsAsync("SALE_VOID");
+                if (_dialogs.AskReason($"Void Nota {row.Number}", "Alasan void nota ini:", reasons) is not { } reason)
+                    return;
+                string? token = null;
+                if (!_session.Has(Pos.Shared.Auth.Permissions.SaleVoid))
+                {
+                    if (_dialogs.AskSupervisor($"Void nota {row.Number}") is not { } supervisor)
+                        return;
+                    token = (await _api.ApproveAsync(Pos.Shared.Auth.Permissions.SaleVoid, supervisor.Username, supervisor.Password)).ApprovalToken;
+                }
+                if (!_dialogs.Confirm($"Void nota {row.Number} ({row.GrandTotalText})? Stok kembali dan nota tidak bisa dipakai lagi."))
+                    return;
+                pending = (row.Id, Guid.CreateVersion7(), reason, token);
+                _pendingVoid = pending;
+            }
+
+            await _api.VoidSaleAsync(row.Id, new VoidSaleRequest(pending.VoidId, pending.Reason.ReasonId, pending.Reason.Notes, pending.ApprovalToken));
+            _pendingVoid = null;
+            await ShowAsync();
+            StatusMessage = $"Nota {row.Number} di-void ({pending.Reason.ReasonName}).";
+        }
+        catch (NodeApiException ex) when (ex.Code is "node_unreachable")
+        {
+            StatusMessage = $"{ex.Message} Tekan Void lagi untuk mengirim ulang void yang sama.";
+        }
+        catch (NodeApiException ex)
+        {
+            _pendingVoid = null;
             StatusMessage = ex.Message;
         }
         RequestFocus("rows");

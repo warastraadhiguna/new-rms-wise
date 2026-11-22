@@ -197,6 +197,23 @@ public sealed record SalesListRow(
 
 /// <param name="EarliestDate">The first date this user may see (null = no limit).</param>
 public sealed record SalesListPage(IReadOnlyList<SalesListRow> Items, int Total, string TimeZone, DateOnly? EarliestDate);
+
+/// <summary>A reason from the master list (SALE_VOID, RETURN).</summary>
+public sealed record ReasonItem(Guid Id, string Type, string Name)
+{
+    public override string ToString() => Name;
+}
+
+/// <summary>Chosen in the reason dialog.</summary>
+public sealed record ReasonChoice(Guid ReasonId, string ReasonName, string Notes);
+
+/// <param name="Id">UUID v7 kept for retries of the same void.</param>
+public sealed record VoidSaleRequest(Guid Id, Guid ReasonId, string Notes, string? ApprovalToken);
+
+/// <summary>A stored void (UTC time).</summary>
+public sealed record SaleVoidInfo(
+    Guid Id, Guid SaleId, string SaleNumber, Guid ReasonId, string ReasonName, string Notes, DateTime VoidedAt,
+    Guid CreatedBy, string CreatedByName, Guid? ApprovedBy, string? ApprovedByName);
 public interface INodeApi
 {
     Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default);
@@ -233,6 +250,12 @@ public interface INodeApi
 
     /// <summary>Data Penjualan: branch dates, q = nota / member / cashier, paged.</summary>
     Task<SalesListPage> GetSalesAsync(DateOnly from, DateOnly to, string? q, int offset, int limit, CancellationToken ct = default);
+
+    /// <summary>Reasons of one type (SALE_VOID, RETURN).</summary>
+    Task<IReadOnlyList<ReasonItem>> GetReasonsAsync(string type, CancellationToken ct = default);
+
+    /// <summary>Void of a sale whose shift is open; the same request id again returns the stored void.</summary>
+    Task<SaleVoidInfo> VoidSaleAsync(Guid saleId, VoidSaleRequest request, CancellationToken ct = default);
 
     Task<IReadOnlyList<StockLocation>> GetStockLocationsAsync(CancellationToken ct = default);
 
@@ -296,6 +319,9 @@ public interface IDialogService
 
     /// <summary>The "Tutup Shift" dialog; true when the shift was closed in it.</summary>
     bool ShowCloseShift(ViewModels.CloseShiftViewModel closeShift);
+
+    /// <summary>A reason from the list plus Keterangan (both required); null when cancelled.</summary>
+    ReasonChoice? AskReason(string title, string prompt, IReadOnlyList<ReasonItem> reasons);
 
     /// <summary>"Export to File": where to save; null when cancelled.</summary>
     string? AskSaveFile(string suggestedFileName);

@@ -185,3 +185,36 @@ public sealed partial class ReceiptPreviewViewModel(
     [RelayCommand]
     private void Close() => DialogResult = true;
 }
+
+/// <summary>Alasan (from the list) + Keterangan, both required: Void penjualan, Retur penjualan.</summary>
+public sealed partial class ReasonDialogViewModel : DialogViewModel
+{
+    public ReasonDialogViewModel(string title, string prompt, IReadOnlyList<Services.ReasonItem> reasons)
+    {
+        Title = title;
+        Prompt = prompt;
+        Reasons = reasons;
+        _selectedReason = reasons.Count == 1 ? reasons[0] : null;
+    }
+
+    public string Title { get; }
+    public string Prompt { get; }
+    public IReadOnlyList<Services.ReasonItem> Reasons { get; }
+
+    [ObservableProperty] private Services.ReasonItem? _selectedReason;
+    [ObservableProperty] private string _notes = "";
+
+    public Services.ReasonChoice? Result { get; private set; }
+
+    [RelayCommand]
+    private void Ok()
+    {
+        ErrorMessage = SelectedReason is null ? "Pilih alasan."
+            : Notes.Trim().Length == 0 ? "Keterangan wajib diisi."
+            : null;
+        if (ErrorMessage is not null)
+            return;
+        Result = new Services.ReasonChoice(SelectedReason!.Id, SelectedReason.Name, Notes.Trim());
+        DialogResult = true;
+    }
+}

@@ -12,6 +12,8 @@ public static class SyncDocTypes
     public const string StockAdjustment = "STOCK_ADJUSTMENT";
     public const string CartCancellation = "CART_CANCELLATION";
     public const string LocationTransfer = "LOCATION_TRANSFER";
+    public const string SaleVoid = "SALE_VOID";
+    public const string SaleReturn = "SALE_RETURN";
 }
 
 /// <summary>

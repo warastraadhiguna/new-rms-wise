@@ -80,6 +80,17 @@ public static class ApiEndpoints
                 ListSalesAsync(from, to, q, offset, limit, service, nodeIdentity, clock, user, ct))
             .RequireAuthorization(Policies.SalesRead);
 
+        // Void (10b): only while the sale's shift is open; reason + notes; sale.void or a supervisor's approval.
+        api.MapPost("/sales/{saleId:guid}/void", async (Guid saleId, VoidSaleRequest request, SaleVoidService service,
+                ClaimsPrincipal user, CancellationToken ct) =>
+            {
+                var result = await service.VoidAsync(saleId, request, user.UserId(), user.HasPermission(Permissions.SaleVoid), ct);
+                return result.Replayed ? Results.Ok(result.Void) : Results.Created($"/api/v1/sales/{saleId}/void", result.Void);
+            })
+            .RequireAuthorization(Policies.SalesRead);
+        api.MapGet("/reasons", (string type, SaleVoidService service, CancellationToken ct) => service.ReasonsAsync(type, ct))
+            .RequireAuthorization(Policies.SalesRead);
+
         // Receipt data of a stored sale (print after payment, F5 reprint): names, cashier, branch timezone, receipt texts.
         api.MapGet("/sales/{saleId:guid}", (Guid saleId, SaleDetailService service, CancellationToken ct) => service.GetAsync(saleId, ct))
             .RequireAuthorization(Policies.SalesRead);

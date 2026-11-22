@@ -42,6 +42,9 @@ public sealed record StockDocumentLine(
 public static class StockDocTypes
 {
     public const string Sale = "SALE";
+
+    /// <summary>A voided sale: every sold quantity back into its bucket (doc_id = sale_voids.id).</summary>
+    public const string SaleVoid = "SALE_VOID";
     public const string SaleReturn = "SALE_RETURN";
     public const string GoodsReceipt = "GOODS_RECEIPT";
     public const string Delivery = "DELIVERY";
@@ -49,7 +52,7 @@ public static class StockDocTypes
     public const string Adjustment = "ADJUSTMENT";
 
     public static IReadOnlyList<string> All { get; } =
-        [Sale, SaleReturn, GoodsReceipt, Delivery, LocationTransfer, Adjustment];
+        [Sale, SaleVoid, SaleReturn, GoodsReceipt, Delivery, LocationTransfer, Adjustment];
 
     public static bool IsDefined(string? value) => value is not null && All.Contains(value);
 
@@ -60,6 +63,7 @@ public static class StockDocTypes
     public static string Label(string docType, bool fromStockCount) => docType switch
     {
         Sale => "Penjualan",
+        SaleVoid => "Void Penjualan",
         SaleReturn => "Retur",
         GoodsReceipt => "Terima Barang",
         Delivery or LocationTransfer => "Mutasi",

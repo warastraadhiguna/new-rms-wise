@@ -218,6 +218,44 @@ public sealed class FakeNodeApi : INodeApi
             || r.CashierName.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
         return Task.FromResult(new SalesListPage(matching.Skip(offset).Take(limit).ToList(), matching.Count, "Asia/Jakarta", SalesEarliestDate));
     }
+
+    // ---- void / reasons ---------------------------------------------------------------------------
+
+    public List<ReasonItem> Reasons { get; } =
+    [
+        new(Guid.Parse("01930000-0000-7000-8000-0000000000e1"), "SALE_VOID", "Salah input"),
+        new(Guid.Parse("01930000-0000-7000-8000-0000000000e2"), "SALE_VOID", "Pembeli batal"),
+        new(Guid.Parse("01930000-0000-7000-8000-0000000000f1"), "RETURN", "Barang rusak"),
+        new(Guid.Parse("01930000-0000-7000-8000-0000000000f2"), "RETURN", "Salah barang"),
+    ];
+
+    public Task<IReadOnlyList<ReasonItem>> GetReasonsAsync(string type, CancellationToken ct = default)
+    {
+        Calls.Add($"reasons:{type}");
+        return Task.FromResult<IReadOnlyList<ReasonItem>>(Reasons.Where(r => r.Type == type).ToList());
+    }
+
+    public List<(Guid SaleId, VoidSaleRequest Request)> VoidRequests { get; } = [];
+
+    /// <summary>Thrown by the next VoidSaleAsync (then cleared).</summary>
+    public Exception? NextVoidFailure { get; set; }
+
+    public Task<SaleVoidInfo> VoidSaleAsync(Guid saleId, VoidSaleRequest request, CancellationToken ct = default)
+    {
+        Calls.Add($"void:{saleId}");
+        VoidRequests.Add((saleId, request));
+        if (NextVoidFailure is { } failure)
+        {
+            NextVoidFailure = null;
+            throw failure;
+        }
+        var index = SalesRows.FindIndex(r => r.Id == saleId);
+        var number = index >= 0 ? SalesRows[index].Number : "TK01-SL-202611-000001";
+        if (index >= 0)
+            SalesRows[index] = SalesRows[index] with { Status = "VOID", Outstanding = 0m };
+        return Task.FromResult(new SaleVoidInfo(request.Id, saleId, number, request.ReasonId, "Salah input", request.Notes,
+            new DateTime(2026, 11, 22, 4, 0, 0, DateTimeKind.Utc), Samples.UserId, "Kasir Satu", null, null));
+    }
     // ---- tutup shift ------------------------------------------------------------------------------
 
     /// <summary>Returned by GetShiftClosingAsync (default: <see cref="Shifts.Blind"/>).</summary>
@@ -381,6 +419,17 @@ public sealed class FakeDialogs : IDialogService
     public List<(string Title, string Message, IReadOnlyList<string> Lines)> Documents { get; } = [];
 
 
+
+    /// <summary>Answer of the reason dialog (null = cancelled); records the reasons offered.</summary>
+    public ReasonChoice? ReasonToChoose { get; set; }
+    public List<(string Title, IReadOnlyList<ReasonItem> Reasons)> ReasonDialogs { get; } = [];
+
+    public ReasonChoice? AskReason(string title, string prompt, IReadOnlyList<ReasonItem> reasons)
+    {
+        Asked.Add($"reason:{title}");
+        ReasonDialogs.Add((title, reasons));
+        return ReasonToChoose;
+    }
     public List<string> Messages { get; } = [];
 
     public void ShowMessage(string message) { Asked.Add($"message:{message}"); Messages.Add(message); }

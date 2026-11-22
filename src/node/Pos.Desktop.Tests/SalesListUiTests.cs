@@ -19,6 +19,7 @@ public class SalesListUiTests : IDisposable
     private readonly FakeNodeApi _api = new();
     private readonly FakeDialogs _dialogs = new();
     private readonly FakePrinter _printer = new();
+    private readonly SessionState _session = Session();
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "pos-sales-list-tests", Guid.NewGuid().ToString("N"));
 
     public void Dispose()
@@ -28,7 +29,7 @@ public class SalesListUiTests : IDisposable
     }
 
     private SalesListViewModel Vm() =>
-        new(_api, _dialogs, Receipts.Service(_api, _dialogs, _printer), () => Today, (_, _) => Task.CompletedTask);
+        new(_api, _dialogs, Receipts.Service(_api, _dialogs, _printer), _session, () => Today, (_, _) => Task.CompletedTask);
 
     private void WithView(Action<SalesListView, SalesListViewModel> test) => OnSta(() =>
     {
@@ -220,4 +221,143 @@ public class SalesListUiTests : IDisposable
         Check(["sale.create"], visible: true);
         Check(["stock.view"], visible: false);
     });
+
+    private static SessionState Session(params string[] permissions)
+    {
+        var session = new SessionState();
+        session.SetLogin(Samples.LoginWith(permissions.Length == 0 ? ["sale.create", "shift.open"] : permissions));
+        return session;
+    }
+
+    // ---- void (10b) -------------------------------------------------------------------------------
+
+    private static void PressShiftDelete(SalesListView view) =>
+        view.InputBindings.OfType<KeyBinding>().Single(b => b.Key == Key.Delete && b.Modifiers == ModifierKeys.Shift).Command.Execute(null);
+
+    [Fact]
+    public void Void_asks_reason_and_supervisor_then_reloads_with_status_void()
+    {
+        var cash = SalesRows.Cash();
+        _api.SalesRows.Add(cash);
+        _dialogs.ReasonToChoose = new ReasonChoice(_api.Reasons[0].Id, "Salah input", "scan dua kali");
+        _dialogs.Supervisor = new SupervisorCredentials("spv", "rahasia");
+        _dialogs.ConfirmAnswer = true;
+        _api.OnApprove = (action, _, _) => new ApprovalResult("tok-1", action, DateTime.UtcNow.AddMinutes(2), new UserInfo(Guid.CreateVersion7(), "spv", "Supervisor"));
+        WithView((view, vm) =>
+        {
+            Assert.Equal("Void [SHF DEL]", Find<Button>(view, "VoidButton").Content);
+            PressShiftDelete(view);
+            vm.PendingSearch.GetAwaiter().GetResult();
+            DoEvents();
+
+            var (title, reasons) = Assert.Single(_dialogs.ReasonDialogs);
+            Assert.Equal("Void Nota TK01-SL-202611-000101", title);
+            Assert.Equal(["Salah input", "Pembeli batal"], reasons.Select(r => r.Name));        // SALE_VOID reasons only
+            Assert.Contains("approve:sale.void:spv", _api.Calls);
+            var (saleId, request) = Assert.Single(_api.VoidRequests);
+            Assert.Equal((cash.Id, _api.Reasons[0].Id, "scan dua kali", "tok-1"), (saleId, request.ReasonId, request.Notes, request.ApprovalToken));
+            Assert.Equal(7, request.Id.Version);
+            Assert.Equal(["Void"], Cells(Find<DataGrid>(view, "RowsGrid"), "Status"));
+            Assert.Equal("Nota TK01-SL-202611-000101 di-void (Salah input).", Find<TextBlock>(view, "StatusText").Text);
+        });
+    }
+
+    [Fact]
+    public void With_sale_void_no_supervisor_is_asked()
+    {
+        _api.SalesRows.Add(SalesRows.Cash());
+        _dialogs.ReasonToChoose = new ReasonChoice(_api.Reasons[0].Id, "Salah input", "x");
+        _dialogs.ConfirmAnswer = true;
+        var vm = new SalesListViewModel(_api, _dialogs, Receipts.Service(_api, _dialogs, _printer), Session("sale.create", "sale.void"),
+            () => Today, (_, _) => Task.CompletedTask);
+        OnSta(() =>
+        {
+            vm.Initialization.GetAwaiter().GetResult();
+            var view = new SalesListView { DataContext = vm };
+            var window = Host(view);
+            try
+            {
+                DoEvents();
+                Click(Find<Button>(view, "VoidButton"));
+                DoEvents();
+
+                Assert.DoesNotContain(_dialogs.Asked, a => a.StartsWith("supervisor:", StringComparison.Ordinal));
+                Assert.Null(Assert.Single(_api.VoidRequests).Request.ApprovalToken);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void A_nota_of_a_closed_shift_says_use_retur()
+    {
+        _api.SalesRows.Add(SalesRows.Cash() with { ShiftOpen = false });
+        WithView((view, vm) =>
+        {
+            PressShiftDelete(view);
+            DoEvents();
+
+            Assert.Equal("Shift sudah ditutup, gunakan Retur [F12].", Find<TextBlock>(view, "StatusText").Text);
+            Assert.Empty(_dialogs.ReasonDialogs);
+            Assert.Empty(_api.VoidRequests);
+        });
+    }
+
+    [Fact]
+    public void Cancelling_the_reason_or_the_confirmation_sends_nothing_and_a_void_nota_is_refused()
+    {
+        _api.SalesRows.AddRange([SalesRows.Cash(), SalesRows.Voided()]);
+        WithView((view, vm) =>
+        {
+            vm.SelectedRow = vm.Rows.Single(r => !r.IsVoid);
+            PressShiftDelete(view);                                                    // reason dialog cancelled
+            _dialogs.ReasonToChoose = new ReasonChoice(_api.Reasons[0].Id, "Salah input", "x");
+            _dialogs.Supervisor = null;
+            PressShiftDelete(view);                                                    // supervisor cancelled
+            DoEvents();
+            Assert.Empty(_api.VoidRequests);
+
+            vm.SelectedRow = vm.Rows.Single(r => r.IsVoid);
+            PressShiftDelete(view);
+            Assert.Equal("Nota TK01-SL-202611-000103 sudah di-void.", Find<TextBlock>(view, "StatusText").Text);
+        });
+    }
+
+    [Fact]
+    public void A_retry_after_a_network_failure_sends_the_same_void()
+    {
+        _api.SalesRows.Add(SalesRows.Cash());
+        _dialogs.ReasonToChoose = new ReasonChoice(_api.Reasons[0].Id, "Salah input", "x");
+        _dialogs.ConfirmAnswer = true;
+        var vm = new SalesListViewModel(_api, _dialogs, Receipts.Service(_api, _dialogs, _printer), Session("sale.create", "sale.void"),
+            () => Today, (_, _) => Task.CompletedTask);
+        OnSta(() =>
+        {
+            vm.Initialization.GetAwaiter().GetResult();
+            var view = new SalesListView { DataContext = vm };
+            var window = Host(view);
+            try
+            {
+                DoEvents();
+                _api.NextVoidFailure = new NodeApiException("Node Service tidak dapat dihubungi.", "node_unreachable", null);
+                PressShiftDelete(view);
+                DoEvents();
+                Assert.Contains("Tekan Void lagi", Find<TextBlock>(view, "StatusText").Text);
+
+                PressShiftDelete(view);
+                DoEvents();
+
+                Assert.Equal(2, _api.VoidRequests.Count);
+                Assert.Equal(_api.VoidRequests[0].Request, _api.VoidRequests[1].Request);
+                Assert.Single(_dialogs.ReasonDialogs);                                     // not asked again
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
 }

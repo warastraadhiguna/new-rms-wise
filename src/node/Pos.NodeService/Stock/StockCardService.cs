@@ -102,18 +102,20 @@ public sealed class StockCardService(DbConnectionFactory connections, NodeIdenti
                 {scope} AND sl.occurred_at >= @fromUtc AND sl.occurred_at < @toUtc
             )
             SELECT r.id AS LedgerId, r.occurred_at AS OccurredAt, r.doc_type AS DocType, r.doc_id AS DocId,
-                   COALESCE(s.number, sr.number, gr.number, dn.number, lt.number, sa.number) AS DocNumber,
+                   COALESCE(s.number, svs.number, sr.number, gr.number, dn.number, lt.number, sa.number) AS DocNumber,
                    CAST(sa.stock_count_id IS NOT NULL AS SIGNED) AS FromStockCount,
                    u.full_name AS UserName, r.location_id AS LocationId, r.location_code AS LocationCode,
                    r.expiry_date AS ExpiryDate, r.base_qty AS BaseQty, r.running AS Running
             FROM ranged r
             LEFT JOIN sales s ON r.doc_type = 'SALE' AND s.id = r.doc_id
+            LEFT JOIN sale_voids sv ON r.doc_type = 'SALE_VOID' AND sv.id = r.doc_id
+            LEFT JOIN sales svs ON svs.id = sv.sale_id
             LEFT JOIN sale_returns sr ON r.doc_type = 'SALE_RETURN' AND sr.id = r.doc_id
             LEFT JOIN goods_receipts gr ON r.doc_type = 'GOODS_RECEIPT' AND gr.id = r.doc_id
             LEFT JOIN delivery_notes dn ON r.doc_type = 'DELIVERY' AND dn.id = r.doc_id
             LEFT JOIN location_transfers lt ON r.doc_type = 'LOCATION_TRANSFER' AND lt.id = r.doc_id
             LEFT JOIN stock_adjustments sa ON r.doc_type = 'ADJUSTMENT' AND sa.id = r.doc_id
-            LEFT JOIN users u ON u.id = COALESCE(s.created_by, sr.created_by, gr.created_by, dn.created_by, lt.created_by, sa.created_by)
+            LEFT JOIN users u ON u.id = COALESCE(s.created_by, sv.created_by, sr.created_by, gr.created_by, dn.created_by, lt.created_by, sa.created_by)
             ORDER BY r.occurred_at, r.created_at, r.id
             LIMIT @limit OFFSET @offset
             """, args, cancellationToken: ct));
