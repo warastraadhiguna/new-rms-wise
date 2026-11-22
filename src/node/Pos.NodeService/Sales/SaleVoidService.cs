@@ -162,7 +162,7 @@ public sealed class SaleVoidService(TransactionRunner runner, NodeIdentity nodeI
         }
 
         var dto = await LoadBySaleAsync(c, tx, saleId, ct) ?? throw new InvalidOperationException("The void was not stored.");
-        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.SaleVoid, dto.Id, 1, dto, ct);
+        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.SaleVoid, dto.Id, 1, ct);
         return new SaleVoidResult(dto, Replayed: false);
     }
 

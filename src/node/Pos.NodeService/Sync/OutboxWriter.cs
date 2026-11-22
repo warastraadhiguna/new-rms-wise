@@ -1,26 +1,24 @@
-using System.Text.Json;
 using Dapper;
 using MySqlConnector;
-using Pos.Shared.Sync;
 
 namespace Pos.NodeService.Sync;
 
 /// <summary>
-/// Writes the <c>sync_outbox</c> row of a document inside the document's own transaction.
-/// The payload is the full document (header + lines) in <see cref="PosJson"/> format.
+/// Writes the <c>sync_outbox</c> row of a document inside the document's own transaction, after its rows.
+/// The payload is the document's snapshot (<see cref="DocumentSnapshot"/>, docs/sync-contract.md format 2): the rows
+/// exactly as stored, so HQ keeps identical copies.
 /// </summary>
 public static class OutboxWriter
 {
     public static async Task<long> WriteAsync(
         MySqlConnection connection, MySqlTransaction transaction,
-        string docType, Guid docId, int rowVersion, object payload, CancellationToken cancellationToken)
+        string docType, Guid docId, int rowVersion, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(docType);
-        ArgumentNullException.ThrowIfNull(payload);
         if (rowVersion < 1)
             throw new ArgumentOutOfRangeException(nameof(rowVersion), rowVersion, "Row version starts at 1.");
 
-        var json = JsonSerializer.Serialize(payload, payload.GetType(), PosJson.Options);
+        var json = (await DocumentSnapshot.ReadAsync(connection, transaction, docType, docId, cancellationToken)).ToJsonString();
 
         return await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             """

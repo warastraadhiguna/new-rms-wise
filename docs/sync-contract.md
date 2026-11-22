@@ -87,3 +87,14 @@ row_version wins).
 ```
 
 Response: `{ "hq_time": "…", "clock_skew_ms": 1250, "master_version": 900 }` (skew = node clock − HQ clock).
+
+## The node's agent (Pos.NodeService/Sync)
+
+- Outbox rows are pending while `sent_at` and `failed_at` are NULL. `accepted`/`duplicate`/`stale` → `sent_at`.
+  `rejected` + `retry` → `attempts + 1`, `last_error`, `next_attempt_at` = now + 10 s × 2^attempts (max 1 hour): the
+  other documents keep going. `rejected` without retry → `failed_at` (shown as "gagal"; an admin must look).
+  No answer (no internet, timeout, 5xx, 429) → nothing is marked; the same batch goes again (HQ is idempotent).
+- Pull: cursor `sync_state.master.version`; each page is applied in ONE transaction together with the new cursor.
+- After pulling `nodes`/`branches` the cached node row is reloaded; settings and prices are read per request anyway.
+- Rows written before format 2 get their snapshot rebuilt from the stored rows when they are sent.
+- Worker: every `Sync:IntervalSeconds` (30); after failures the pause doubles up to `Sync:MaxBackoffSeconds` (300).

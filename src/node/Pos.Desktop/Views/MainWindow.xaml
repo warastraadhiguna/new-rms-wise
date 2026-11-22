@@ -97,6 +97,21 @@
                     <Run Text="{Binding NodeName, Mode=OneWay}" FontWeight="SemiBold" />
                 </TextBlock>
             </StatusBarItem>
+            <Separator Visibility="{Binding HasSync, Converter={StaticResource BoolToVisibility}}" />
+            <StatusBarItem Visibility="{Binding HasSync, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock x:Name="SyncStatusText" Text="{Binding Sync.Text, Mode=OneWay}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Sync.IsAlert}" Value="True">
+                                    <Setter Property="Foreground" Value="#C62828" />
+                                    <Setter Property="FontWeight" Value="Bold" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StatusBarItem>
         </StatusBar>
 
         <Grid>

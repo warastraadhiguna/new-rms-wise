@@ -15,6 +15,38 @@ public class NodeServiceUnitTests
         Assert.Equal(expected, DatabaseMigrator.VersionOf(script));
     }
 
+    [Theory]
+    [InlineData(1, 30)]
+    [InlineData(2, 60)]
+    [InlineData(3, 120)]
+    [InlineData(5, 300)]          // capped at the maximum
+    [InlineData(50, 300)]
+    [InlineData(0, 30)]
+    public void Sync_backoff_doubles_up_to_the_maximum(int failures, int expectedSeconds)
+    {
+        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds),
+            Pos.NodeService.Sync.SyncWorker.Backoff(TimeSpan.FromSeconds(30), failures, TimeSpan.FromSeconds(300)));
+    }
+
+    [Fact]
+    public void Sync_token_is_saved_encrypted_and_read_back()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "pos-sync-token-" + Guid.NewGuid().ToString("N"), "sync-token.dat");
+        try
+        {
+            var store = new Pos.NodeService.Sync.SyncTokenStore(path);
+            Assert.Null(store.Load());
+            store.Save("  pos_abcdefghijklmnopqrstuvwxyz  ");
+            Assert.Equal("pos_abcdefghijklmnopqrstuvwxyz", store.Load());
+            Assert.DoesNotContain("pos_abcdefghijklmnopqrstuvwxyz", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(path)));
+            Assert.Throws<ArgumentException>(() => store.Save("not-a-token"));
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
+
     [Fact]
     public void Journal_table_is_schema_versions()
     {

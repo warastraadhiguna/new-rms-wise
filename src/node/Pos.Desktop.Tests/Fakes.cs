@@ -124,6 +124,15 @@ public sealed class FakeNodeApi : INodeApi
         return Task.FromResult(Config);
     }
 
+    /// <summary>Default: synced just now, nothing pending. Throw a NodeApiException to simulate an unreachable Node Service.</summary>
+    public Func<SyncStatusInfo>? OnSyncStatus { get; set; }
+
+    public Task<SyncStatusInfo> GetSyncStatusAsync(CancellationToken ct = default)
+    {
+        Calls.Add("sync-status");
+        return Task.FromResult((OnSyncStatus ?? (() => new SyncStatusInfo(true, "ok", DateTime.UtcNow, 0, 0, "Sinkron: baru saja · 0 tertunda", false)))());
+    }
+
     public Task<SaleResult> CreateSaleAsync(CreateSaleRequest request, CancellationToken ct = default)
     {
         Calls.Add("create-sale");

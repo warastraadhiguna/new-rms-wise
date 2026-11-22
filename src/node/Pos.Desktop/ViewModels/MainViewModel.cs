@@ -36,12 +36,14 @@ public sealed partial class MainViewModel : ObservableObject
     {
     }
 
-    public MainViewModel(SessionState session, FormFactories forms, IDialogService? dialogs = null, INavigator? navigator = null)
+    public MainViewModel(SessionState session, FormFactories forms, IDialogService? dialogs = null, INavigator? navigator = null,
+        SyncStatusViewModel? sync = null)
     {
         _session = session;
         _forms = forms;
         _dialogs = dialogs;
         _navigator = navigator;
+        Sync = sync;
         Tabs.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(SalesForm));
@@ -56,6 +58,11 @@ public sealed partial class MainViewModel : ObservableObject
         else if (CanTransfer)
             OpenLocationTransfer();
     }
+
+    /// <summary>Status bar: sync with HQ (null in tests that do not need it: the item is hidden).</summary>
+    public SyncStatusViewModel? Sync { get; }
+
+    public bool HasSync => Sync is not null;
 
     public string CashierName => _session.User?.FullName ?? "";
 

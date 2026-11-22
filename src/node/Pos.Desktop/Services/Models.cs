@@ -254,6 +254,9 @@ public sealed record SaleReturnInfo(
 public sealed record SaleReturnSummary(
     Guid Id, string Number, DateTime ReturnedAt, string SaleNumber, string? CustomerName, string CreatedByName, string Settlement,
     decimal Total, string? Notes, bool ExchangeUsed, string TimeZone);
+/// <summary>GET /api/v1/sync/status: e.g. Text "Sinkron: 2 menit lalu · 0 tertunda", IsAlert = show it red.</summary>
+public sealed record SyncStatusInfo(bool Configured, string State, DateTime? LastSuccessAt, int PendingOutbox, int FailedOutbox, string Text, bool IsAlert);
+
 public interface INodeApi
 {
     Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default);
@@ -282,6 +285,9 @@ public interface INodeApi
         Guid id, string reason, decimal totalAmount, IReadOnlyList<CartCancellationLine> lines, CancellationToken ct = default);
 
     Task<SalesConfig> GetSalesConfigAsync(CancellationToken ct = default);
+
+    /// <summary>Sync with HQ as the Node Service sees it (text and colour computed there, with its clock).</summary>
+    Task<SyncStatusInfo> GetSyncStatusAsync(CancellationToken ct = default);
 
     Task<SaleResult> CreateSaleAsync(CreateSaleRequest request, CancellationToken ct = default);
 

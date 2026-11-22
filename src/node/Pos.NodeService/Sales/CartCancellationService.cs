@@ -124,7 +124,7 @@ public sealed class CartCancellationService(TransactionRunner runner, NodeIdenti
             }).ToList(), tx, cancellationToken: ct));
 
         var dto = await LoadAsync(c, tx, request.Id, ct) ?? throw new InvalidOperationException("Cancellation not found after insert.");
-        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.CartCancellation, dto.Id, 1, dto, ct);
+        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.CartCancellation, dto.Id, 1, ct);
         return dto;
     }
 

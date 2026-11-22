@@ -56,6 +56,11 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
             var exists = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
                 "SELECT COUNT(*) FROM nodes WHERE code = @nodeCode", new { nodeCode }, tx, cancellationToken: ct)) > 0;
 
+            // The dev seed is this database's master data: the node may sell (production: init-from-hq).
+            await connection.ExecuteAsync(new CommandDefinition(
+                "INSERT IGNORE INTO sync_state (state_key, state_value) VALUES (@key, 'DEV_SEED')",
+                new { key = Sync.SyncState.Initialized }, tx, cancellationToken: ct));
+
             if (exists)
             {
                 await UpgradeDevAuthAsync(connection, tx, ct);
@@ -532,18 +537,7 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
             lines.Select(l => new { l.Id, adjustmentId, l.ProductId, ExpiryDate = l.ExpiryDate?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), l.BaseQty, l.UnitCost }).ToList(),
             tx, cancellationToken: ct));
 
-        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.StockAdjustment, adjustmentId, 1, new
-        {
-            Id = adjustmentId,
-            seed.NodeId,
-            Number = number,
-            LocationId = seed.DisplayLocationId,
-            ReasonId = reason,
-            AdjustedAt = now,
-            CreatedBy = seed.AdminId,
-            Lines = lines,
-            StockLedger = entries,
-        }, ct);
+        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.StockAdjustment, adjustmentId, 1, ct);
     }
 
     private sealed record AdjustmentLine(Guid Id, Guid ProductId, DateOnly? ExpiryDate, decimal BaseQty, decimal UnitCost);

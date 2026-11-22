@@ -129,7 +129,7 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
 
             var dto = new ShiftDto(id, node.Id, number, deviceId, cashierId, ShiftStatus.Open, now, null,
                 request.OpeningCash, null, null, null, null, null, null, 1);
-            await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.CashierShift, id, dto.RowVersion, dto, ct);
+            await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.CashierShift, id, dto.RowVersion, ct);
             return dto;
         }, "Open shift", cancellationToken);
     }
@@ -249,7 +249,7 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
             var closed = await LoadRowAsync(c, tx, shift.Id, forUpdate: false, ct)
                          ?? throw new InvalidOperationException($"Shift {shift.Id} disappeared while closing.");
             var dto = ToDto(closed, node, blind, receipt);
-            await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.CashierShift, shift.Id, rowVersion, dto with { Receipt = null }, ct);
+            await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.CashierShift, shift.Id, rowVersion, ct);
             return dto;
         }, "Close shift", cancellationToken);
     }

@@ -77,7 +77,8 @@ public partial class App : Application
                 sp.GetRequiredService<ReceiptService>(), sp.GetRequiredService<SessionState>()),
             ReturnList: () => new ReturnListViewModel(sp.GetRequiredService<INodeApi>(), sp.GetRequiredService<IDialogService>(),
                 sp.GetRequiredService<ReceiptService>())),
-            sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INavigator>()));
+            sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INavigator>(),
+            new SyncStatusViewModel(sp.GetRequiredService<INodeApi>())));
         services.AddTransient<LoginWindow>();
         services.AddTransient<OpenShiftWindow>();
         services.AddTransient<MainWindow>();

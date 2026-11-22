@@ -21,6 +21,9 @@ public sealed class NodeIdentity(DbConnectionFactory connections, string code)
         ? throw new ArgumentException("Node code is required (setting Node:Code).", nameof(code))
         : code.Trim().ToUpperInvariant();
 
+    /// <summary>Forget the cached row (master data from HQ changed nodes or branches).</summary>
+    public void Reset() => _cached = null;
+
     public async Task<NodeInfo> GetAsync(CancellationToken cancellationToken = default)
     {
         if (_cached is not null)

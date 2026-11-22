@@ -267,7 +267,7 @@ public sealed class SaleReturnService(TransactionRunner runner, NodeIdentity nod
         await StockPostingService.PostWithinAsync(c, tx, movements, ct);
 
         var dto = await LoadAsync(c, tx, request.Id, ct) ?? throw new InvalidOperationException("The return was not stored.");
-        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.SaleReturn, dto.Id, 1, dto with { Receipt = null }, ct);
+        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.SaleReturn, dto.Id, 1, ct);
         return new SaleReturnResult(dto, Replayed: false);
     }
 

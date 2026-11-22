@@ -93,30 +93,45 @@ public class FoundationTests(DatabaseFixture db)
     public async Task Outbox_row_is_written_in_the_document_transaction()
     {
         var docId = Guid.CreateVersion7();
-        var payload = new { Id = docId, Total = 12500m, SoldAt = new DateTime(2026, 11, 20, 3, 0, 0, DateTimeKind.Utc), Lines = new[] { new { Qty = 2m } } };
+        var number = "TEST-MT-" + docId.ToString("N")[..12];
+        Task InsertTransfer(MySqlConnector.MySqlConnection c, MySqlConnector.MySqlTransaction tx) => c.ExecuteAsync(
+            """
+            INSERT INTO location_transfers (id, node_id, number, from_location_id, to_location_id, transferred_at, created_by)
+            VALUES (@docId, @NodeId, @number, @StorageLocationId, @DisplayLocationId, '2026-11-20 03:00:00.000', @AdminId)
+            """, new { docId, db.Seed.NodeId, number, db.Seed.StorageLocationId, db.Seed.DisplayLocationId, db.Seed.AdminId }, tx);
 
         await using (var connection = await db.Factory.OpenAsync())
         await using (var tx = await connection.BeginTransactionAsync())
         {
-            await OutboxWriter.WriteAsync(connection, tx, SyncDocTypes.Sale, docId, 1, payload, default);
+            await InsertTransfer(connection, tx);
+            await OutboxWriter.WriteAsync(connection, tx, SyncDocTypes.LocationTransfer, docId, 1, default);
             await tx.RollbackAsync();
         }
         Assert.Equal(0, await CountOutboxAsync(docId));
 
         var runner = new TransactionRunner(db.Factory);
-        await runner.RunAsync((c, tx, ct) => OutboxWriter.WriteAsync(c, tx, SyncDocTypes.Sale, docId, 1, payload, ct), "outbox");
+        await runner.RunAsync(async (c, tx, ct) =>
+        {
+            await InsertTransfer(c, tx);
+            return await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.LocationTransfer, docId, 1, ct);
+        }, "outbox");
 
         await using var read = await db.Factory.OpenAsync();
         var row = await read.QuerySingleAsync<(string DocType, int RowVersion, string Payload, DateTime? SentAt)>(
             "SELECT doc_type, row_version, payload, sent_at FROM sync_outbox WHERE doc_id = @docId", new { docId });
-        Assert.Equal(SyncDocTypes.Sale, row.DocType);
+        Assert.Equal(SyncDocTypes.LocationTransfer, row.DocType);
         Assert.Equal(1, row.RowVersion);
         Assert.Null(row.SentAt);
 
+        // Format 2 (docs/sync-contract.md): the rows as stored.
         using var json = JsonDocument.Parse(row.Payload);
-        Assert.Equal("12500.0000", json.RootElement.GetProperty("total").GetString());
-        Assert.Equal("2026-11-20T03:00:00.000Z", json.RootElement.GetProperty("sold_at").GetString());
-        Assert.Equal("2.0000", json.RootElement.GetProperty("lines")[0].GetProperty("qty").GetString());
+        Assert.Equal(2, json.RootElement.GetProperty("format").GetInt32());
+        Assert.Equal(db.Seed.NodeId.ToString(), json.RootElement.GetProperty("node_id").GetString());
+        var transfer = json.RootElement.GetProperty("tables")[0];
+        Assert.Equal("location_transfers", transfer.GetProperty("table").GetString());
+        var stored = transfer.GetProperty("rows")[0];
+        Assert.Equal(number, stored.GetProperty("number").GetString());
+        Assert.Equal("2026-11-20 03:00:00.000", stored.GetProperty("transferred_at").GetString());
     }
 
     [DatabaseFact]

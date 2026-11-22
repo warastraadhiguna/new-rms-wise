@@ -62,6 +62,9 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
     public Task<SalesConfig> GetSalesConfigAsync(CancellationToken ct = default) =>
         SendAsync<SalesConfig>(HttpMethod.Get, "api/v1/sales/config", null, authenticated: true, withDevice: false, ct);
 
+    public Task<SyncStatusInfo> GetSyncStatusAsync(CancellationToken ct = default) =>
+        SendAsync<SyncStatusInfo>(HttpMethod.Get, "api/v1/sync/status", null, authenticated: true, withDevice: false, ct);
+
     public Task<SaleResult> CreateSaleAsync(CreateSaleRequest request, CancellationToken ct = default) =>
         SendAsync<SaleResult>(HttpMethod.Post, "api/v1/sales", request, authenticated: true, withDevice: true, ct);
 

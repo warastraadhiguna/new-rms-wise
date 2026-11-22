@@ -9,6 +9,7 @@ using Pos.NodeService.Dev;
 using Pos.NodeService.Health;
 using Pos.NodeService.Nodes;
 using Pos.NodeService.Stock;
+using Pos.NodeService.Sync;
 using Pos.Shared.Sync;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -64,12 +65,42 @@ builder.Services.AddSingleton<SalesListService>();
 builder.Services.AddSingleton<SaleVoidService>();
 builder.Services.AddSingleton<SaleReturnService>();
 builder.Services.AddSingleton<Pos.NodeService.Customers.CustomerSearchService>();
+// Sync with HQ (docs/sync-contract.md): section Sync, token in a DPAPI file, background worker.
+builder.Services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetSection("Sync").Get<SyncOptions>() ?? new SyncOptions());
+builder.Services.AddSingleton(sp => new SyncTokenStore(sp.GetRequiredService<SyncOptions>().TokenFile));
+builder.Services.AddHttpClient(HqSyncClient.HttpClientName)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.GZip });
+builder.Services.AddSingleton(sp => new HqSyncClient(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient(HqSyncClient.HttpClientName),
+    sp.GetRequiredService<SyncOptions>(), sp.GetRequiredService<SyncTokenStore>()));
+builder.Services.AddSingleton<SyncStatus>();
+builder.Services.AddSingleton<MasterDataApplier>();
+builder.Services.AddSingleton<OutboxPusher>();
+builder.Services.AddSingleton<SyncAgent>();
+builder.Services.AddSingleton<NodeInitialization>();
+builder.Services.AddSingleton<NodeInitializer>();
+builder.Services.AddSingleton<SyncStatusService>();
+builder.Services.AddHostedService<SyncWorker>();
 builder.Services.AddSingleton<DevSeeder>(sp => new DevSeeder(
     sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("Pos.DevSeed")));
 
 var app = builder.Build();
 var startupLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Pos.Startup");
+
+// `Pos.NodeService set-sync-token <token>`: store the token from HQ (DPAPI), then exit. Needs no database.
+if (args.Length > 0 && args[0] == "set-sync-token")
+{
+    if (args.Length < 2)
+    {
+        startupLog.LogCritical("Usage: Pos.NodeService set-sync-token <token from HQ, Toko & Gudang>");
+        return 1;
+    }
+    var store = app.Services.GetRequiredService<SyncTokenStore>();
+    store.Save(args[1]);
+    startupLog.LogInformation("Sync token saved (encrypted) in {Path}.", store.Path);
+    return 0;
+}
 
 if (string.IsNullOrWhiteSpace(app.Configuration.GetConnectionString("Pos")))
 {
@@ -146,6 +177,54 @@ if (args.Contains("seed-dev"))
     await app.Services.GetRequiredService<DevSeeder>().SeedAsync(nodeCode);
     return 0;
 }
+
+// `init-from-hq`: an empty node database gets all master data from HQ, then the node may sell.
+if (args.Contains("init-from-hq"))
+{
+    var result = await app.Services.GetRequiredService<NodeInitializer>().RunAsync(CancellationToken.None);
+    if (result.Success)
+        startupLog.LogInformation("{Message}", result.Message);
+    else
+        startupLog.LogCritical("init-from-hq failed: {Message}", result.Message);
+    return result.Success ? 0 : 1;
+}
+
+// `add-device "<name>"`: registers an active cashier PC of this node and prints its id (put it in the PC's settings).
+if (args.Length > 0 && args[0] == "add-device")
+{
+    var name = args.Length > 1 ? string.Join(' ', args.Skip(1)) : "Kasir PC";
+    var node = await app.Services.GetRequiredService<NodeIdentity>().GetAsync();
+    var deviceId = Guid.CreateVersion7();
+    await using (var c = await app.Services.GetRequiredService<DbConnectionFactory>().OpenAsync())
+    {
+        await Dapper.SqlMapper.ExecuteAsync(c,
+            """
+            INSERT INTO devices (id, node_id, name, type, fingerprint, public_key, status, approved_at)
+            VALUES (@deviceId, @nodeId, @name, 'CASHIER_PC', @fingerprint, '', 'ACTIVE', UTC_TIMESTAMP(3))
+            """, new { deviceId, nodeId = node.Id, name, fingerprint = "MANUAL-" + deviceId.ToString("N") });
+    }
+    startupLog.LogInformation("Device \"{Name}\" registered for node {Node}: device id {DeviceId}.", name, node.Code, deviceId);
+    return 0;
+}
+
+// Before init-from-hq this node's row does not exist yet; anything that needs it (also the per-request user check in
+// authentication) answers 503 node_not_configured instead of an error page.
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next(context);
+    }
+    catch (NodeNotFoundException ex) when (!context.Response.HasStarted)
+    {
+        context.Response.Clear();
+        await Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status503ServiceUnavailable, title: "node_not_configured",
+            extensions: new Dictionary<string, object?> { ["code"] = "node_not_configured" }).ExecuteAsync(context);
+    }
+});
+// Explicit, so authentication runs inside the handler above (otherwise it is added in front of it).
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapHealthEndpoints(server);
 app.MapApiV1();

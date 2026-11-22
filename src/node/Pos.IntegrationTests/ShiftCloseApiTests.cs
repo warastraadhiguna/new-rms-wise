@@ -172,8 +172,12 @@ public class ShiftCloseApiTests(DatabaseFixture db) : IAsyncLifetime
             "SELECT CAST(payload AS CHAR) FROM sync_outbox WHERE doc_type = @type AND doc_id = @shift AND row_version = 2",
             new { type = SyncDocTypes.CashierShift, shift });
         using var outbox = JsonDocument.Parse(payload);
-        Assert.Equal(40000m, outbox.RootElement.Dec("cash_sales"));
-        Assert.Equal(JsonValueKind.Null, outbox.RootElement.GetProperty("receipt").ValueKind);
+        var tables = outbox.RootElement.GetProperty("tables").EnumerateArray().ToList();
+        Assert.Equal(["devices", "cashier_shifts"], tables.Select(t => t.Str("table")));
+        var stored = tables[1].GetProperty("rows")[0];
+        Assert.Equal(40000m, stored.Dec("cash_sales"));
+        Assert.Equal("CLOSED", stored.Str("status"));
+        Assert.Equal(2, stored.GetProperty("row_version").GetInt32());
     }
 
     [DatabaseFact]

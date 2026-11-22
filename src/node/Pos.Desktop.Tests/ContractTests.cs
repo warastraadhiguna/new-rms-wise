@@ -37,6 +37,20 @@ public class ContractTests
     }
 
     [Fact]
+    public async Task Sync_status()
+    {
+        _server.Reply(HttpStatusCode.OK, Json("sync-status"));
+
+        var status = await Client().GetSyncStatusAsync();
+
+        Assert.Equal("Sinkron: 22 menit lalu · 4 tertunda", status.Text);
+        Assert.True(status.IsAlert);
+        Assert.Equal(4, status.PendingOutbox);
+        Assert.Equal("offline", status.State);
+        Assert.Equal(new DateTime(2026, 11, 23, 2, 58, 0, DateTimeKind.Utc), status.LastSuccessAt);
+    }
+
+    [Fact]
     public async Task Product_search_and_units()
     {
         _server.Reply(HttpStatusCode.OK, Json("search")).Reply(HttpStatusCode.OK, Json("units"));

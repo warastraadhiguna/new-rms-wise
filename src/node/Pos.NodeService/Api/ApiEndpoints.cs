@@ -7,6 +7,7 @@ using Pos.NodeService.Sales;
 using Pos.NodeService.Shifts;
 using Pos.NodeService.Nodes;
 using Pos.NodeService.Stock;
+using Pos.NodeService.Sync;
 using Pos.Shared.Time;
 using Pos.Shared.Auth;
 
@@ -38,6 +39,7 @@ public static class ApiEndpoints
                 var shift = await service.OpenAsync(request, DeviceFilter.DeviceId(http), user.UserId(), ct);
                 return Results.Created($"/api/v1/shifts/{shift.Id}", shift);
             })
+            .AddEndpointFilter<NodeInitializedFilter>()
             .RequireAuthorization(Permissions.ShiftOpen);
         // Tutup Shift: the cashier of the shift, or a user with shift.close (then notes are required).
         shifts.MapGet("/{shiftId:guid}/closing", (Guid shiftId, ShiftService service, ClaimsPrincipal user, CancellationToken ct) =>
@@ -55,6 +57,7 @@ public static class ApiEndpoints
                 return result.Replayed ? Results.Ok(result) : Results.Created($"/api/v1/sales/{result.Sale.Id}", result);
             })
             .AddEndpointFilter<DeviceFilter>()
+            .AddEndpointFilter<NodeInitializedFilter>()
             .RequireAuthorization(Permissions.SaleCreate);
 
         // F12 "Batal": a cancelled cart with its reason (201 created, 200 when the id was already stored).
@@ -67,6 +70,7 @@ public static class ApiEndpoints
                     : Results.Created($"/api/v1/cart-cancellations/{result.Cancellation.Id}", result.Cancellation);
             })
             .AddEndpointFilter<DeviceFilter>()
+            .AddEndpointFilter<NodeInitializedFilter>()
             .RequireAuthorization(Permissions.SaleCreate);
 
         // Payment dialog: methods, cash rounding, currency precision, the user's discount limit.
@@ -87,6 +91,7 @@ public static class ApiEndpoints
                 var result = await service.VoidAsync(saleId, request, user.UserId(), user.HasPermission(Permissions.SaleVoid), ct);
                 return result.Replayed ? Results.Ok(result.Void) : Results.Created($"/api/v1/sales/{saleId}/void", result.Void);
             })
+            .AddEndpointFilter<NodeInitializedFilter>()
             .RequireAuthorization(Policies.SalesRead);
         api.MapGet("/reasons", (string type, SaleVoidService service, CancellationToken ct) => service.ReasonsAsync(type, ct))
             .RequireAuthorization(Policies.SalesRead);
@@ -105,6 +110,7 @@ public static class ApiEndpoints
                 return result.Replayed ? Results.Ok(result.Return) : Results.Created($"/api/v1/returns/{result.Return.Id}", result.Return);
             })
             .AddEndpointFilter<DeviceFilter>()
+            .AddEndpointFilter<NodeInitializedFilter>()
             .RequireAuthorization(Permissions.SaleCreate);
         returns.MapGet("", async (DateOnly? from, DateOnly? to, SaleReturnService service, NodeIdentity nodeIdentity, TimeProvider clock,
                 CancellationToken ct) =>
@@ -160,6 +166,7 @@ public static class ApiEndpoints
                     ? Results.Ok(result.Transfer)
                     : Results.Created($"/api/v1/stock/transfers/{result.Transfer.Id}", result.Transfer);
             })
+            .AddEndpointFilter<NodeInitializedFilter>()
             .RequireAuthorization(Permissions.StockTransfer);
         transfers.MapPost("/preview", (LocationTransferPreviewRequest request, LocationTransferService service, CancellationToken ct) =>
                 service.PreviewAsync(request, ct))
@@ -181,6 +188,10 @@ public static class ApiEndpoints
         stockAdmin.MapPost("/integrity-check", (StockIntegrityService service, CancellationToken ct) => service.CheckAsync(ct));
         stockAdmin.MapPost("/rebuild-balances", (StockIntegrityService service, ClaimsPrincipal user, CancellationToken ct) =>
             service.RebuildAsync(user.UserId(), user.FindFirstValue(TokenService.NameClaim), ct));
+
+        // Status bar of the desktop: "Sinkron: 2 menit lalu · 0 tertunda", red after sync.alert_minutes without success.
+        api.MapGet("/sync/status", (SyncStatusService service, CancellationToken ct) => service.GetAsync(ct))
+            .RequireAuthorization();
 
         return app;
     }

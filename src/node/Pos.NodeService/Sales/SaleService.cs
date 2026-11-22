@@ -196,7 +196,7 @@ public sealed class SaleService(
 
         var sale = await LoadAsync(c, tx, saleId, ct)
             ?? throw new InvalidOperationException($"Sale {saleId} was not found after insert.");
-        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.Sale, saleId, 1, sale, ct);
+        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.Sale, saleId, 1, ct);
         await Step(SaleSteps.OutboxWritten, ct);
 
         return new CreateSaleResult(sale, warnings, Replayed: false);

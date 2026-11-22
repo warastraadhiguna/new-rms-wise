@@ -115,10 +115,14 @@ public class SalesApiTests(DatabaseFixture db) : IAsyncLifetime
         var payload = await ScalarAsync<string>("SELECT payload FROM sync_outbox WHERE doc_type = @type AND doc_id = @id",
             new { type = SyncDocTypes.Sale, id = sale.Id() });
         using var json = JsonDocument.Parse(payload);
-        Assert.Equal(sale.Str("number"), json.RootElement.Str("number"));
-        Assert.Equal("13700.0000", json.RootElement.Str("total"));
-        Assert.Single(json.RootElement.GetProperty("lines").EnumerateArray());
-        Assert.Single(json.RootElement.GetProperty("payments").EnumerateArray());
+        var tables = json.RootElement.GetProperty("tables").EnumerateArray()
+            .ToDictionary(t => t.Str("table"), t => t.GetProperty("rows").EnumerateArray().ToList());
+        Assert.Equal(["sales", "sale_lines", "sale_payments", "stock_ledger"], tables.Keys);
+        Assert.Equal(sale.Str("number"), tables["sales"].Single().Str("number"));
+        Assert.Equal("13700.0000", tables["sales"].Single().Str("total"));
+        Assert.Single(tables["sale_lines"]);
+        Assert.Single(tables["sale_payments"]);
+        Assert.All(tables["stock_ledger"], l => Assert.Equal(sale.Id().ToString(), l.Str("doc_id")));
     }
 
     [DatabaseFact]

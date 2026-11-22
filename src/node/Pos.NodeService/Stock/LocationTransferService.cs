@@ -175,7 +175,7 @@ public sealed class LocationTransferService(TransactionRunner runner, NodeIdenti
 
         var transfer = await LoadAsync(c, tx, request.Id, ct)
             ?? throw new InvalidOperationException($"Location transfer {request.Id} was not found after insert.");
-        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.LocationTransfer, request.Id, 1, transfer, ct);
+        await OutboxWriter.WriteAsync(c, tx, SyncDocTypes.LocationTransfer, request.Id, 1, ct);
         return transfer;
     }
 

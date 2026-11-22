@@ -1,6 +1,7 @@
 using Pos.NodeService.Data;
 using Pos.NodeService.Nodes;
 using Pos.NodeService.Stock;
+using Pos.NodeService.Sync;
 
 namespace Pos.NodeService.Health;
 
@@ -16,7 +17,7 @@ public static class HealthEndpoints
     public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilder app, ServerVersionCheckResult server)
     {
         app.MapGet("/health", async (DbConnectionFactory connections, DatabaseMigrator migrator, NodeIdentity nodeIdentity,
-            StockIntegrityStatus integrity, CancellationToken ct) =>
+            StockIntegrityStatus integrity, SyncStatusService sync, CancellationToken ct) =>
         {
             object database;
             var healthy = true;
@@ -54,7 +55,18 @@ public static class HealthEndpoints
             var (stockStatus, stock) = StockIntegrity(integrity);
             var status = !healthy ? "degraded" : stockStatus is "warning" or "error" ? "warning" : "ok";
 
-            var body = new { Status = status, Utc = DateTime.UtcNow, Database = database, Node = node, StockIntegrity = stock };
+            object? syncBody = null;
+            if (healthy)
+            {
+                var s = await sync.GetAsync(ct);
+                syncBody = new
+                {
+                    s.State, s.Configured, s.Initialized, s.LastSuccessAt, s.LastAttemptAt, s.PendingOutbox, s.FailedOutbox,
+                    s.MasterVersion, s.AlertMinutes, s.IsAlert, s.Text, s.LastError, s.ClockSkewMs,
+                };
+            }
+
+            var body = new { Status = status, Utc = DateTime.UtcNow, Database = database, Node = node, StockIntegrity = stock, Sync = syncBody };
             return healthy ? Results.Ok(body) : Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
         });
 

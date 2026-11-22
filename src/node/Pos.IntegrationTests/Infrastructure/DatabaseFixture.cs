@@ -231,6 +231,15 @@ public sealed class DatabaseFixture : IAsyncLifetime
         return id;
     }
 
+    /// <summary>A freshly migrated, EMPTY pos_test (no seed), as a new node before init-from-hq. Call <see cref="InitializeAsync"/> after.</summary>
+    public async Task EmptyAsync()
+    {
+        await DropAllTablesAsync();
+        var migration = new DatabaseMigrator(ConnectionString, MigrationsPath).Migrate();
+        if (!migration.Successful)
+            throw new InvalidOperationException($"Migration failed in {migration.FailedScript}: {migration.Error}");
+    }
+
     private async Task DropAllTablesAsync()
     {
         await using var connection = await Factory.OpenAsync();
