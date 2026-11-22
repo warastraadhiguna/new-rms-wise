@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MasterData;
 
 use App\Http\Controllers\Controller;
 use App\Support\Catalog\ProductCatalog;
+use App\Support\Catalog\ProductUsage;
 use App\Support\Decimal;
 use App\Support\MasterData\MasterDataWriter;
 use Illuminate\Http\RedirectResponse;
@@ -93,9 +94,20 @@ class ProductController extends Controller
     }
 
     /** Soft delete of the product with its units and barcodes (prices stay as history). */
-    public function destroy(string $id, MasterDataWriter $writer): RedirectResponse
+    /**
+     * Only a product that was never used may be deleted (with its units and barcodes; prices stay). A product with
+     * any transaction, document or stock is refused with an offer to make it Nonaktif instead.
+     */
+    public function destroy(string $id, MasterDataWriter $writer, ProductUsage $usage): RedirectResponse
     {
         $id = $this->active($id);
+        $usedIn = $usage->usedIn($id);
+        if ($usedIn !== []) {
+            throw ValidationException::withMessages([
+                'delete' => 'Barang ini sudah pernah dipakai ('.implode(', ', $usedIn).') sehingga tidak bisa dihapus. Jadikan Nonaktif agar tidak dijual lagi.',
+                'delete_used' => '1',
+            ]);
+        }
         DB::transaction(function () use ($writer, $id) {
             $units = DB::table('product_units')->where('product_id', $id)->whereNull('deleted_at')->pluck('id');
             foreach (DB::table('product_barcodes')->whereIn('product_unit_id', $units)->whereNull('deleted_at')->pluck('id') as $barcode) {
@@ -108,6 +120,17 @@ class ProductController extends Controller
         });
 
         return $this->saved('Barang dihapus.', '/master-data/products');
+    }
+
+    /** "Jadikan Nonaktif": the alternative to deleting a used product. */
+    public function deactivate(string $id, MasterDataWriter $writer): RedirectResponse
+    {
+        $id = $this->active($id);
+        if (DB::table('products')->where('id', $id)->value('status') !== 'INACTIVE') {
+            $writer->update('products', $id, ['status' => 'INACTIVE']);
+        }
+
+        return $this->saved('Barang dinonaktifkan.');
     }
 
     /** @return array<string, mixed> product columns */

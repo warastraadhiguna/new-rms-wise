@@ -1,5 +1,13 @@
 import { Head, Link } from '@inertiajs/react';
-import { Boxes, Package, Ruler, Tags } from 'lucide-react';
+import {
+    Boxes,
+    Package,
+    Ruler,
+    Store,
+    Tags,
+    Truck,
+    UserRound,
+} from 'lucide-react';
 import { PageHeader } from '@/components/master-data';
 import {
     Card,
@@ -32,6 +40,24 @@ const sections = [
         description: 'Merek barang.',
         href: '/master-data/brands',
         icon: Tags,
+    },
+    {
+        title: 'Pelanggan',
+        description: 'Pelanggan, limit kredit, dan jatuh tempo.',
+        href: '/master-data/customers',
+        icon: UserRound,
+    },
+    {
+        title: 'Supplier',
+        description: 'Supplier, rekening, salesman, dan barang yang dipasok.',
+        href: '/master-data/suppliers',
+        icon: Truck,
+    },
+    {
+        title: 'Toko & Gudang',
+        description: 'Node dan lokasi stok di setiap node.',
+        href: '/master-data/nodes',
+        icon: Store,
     },
 ];
 

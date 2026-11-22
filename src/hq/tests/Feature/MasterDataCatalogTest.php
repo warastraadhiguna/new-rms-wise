@@ -4,6 +4,7 @@ use App\Models\User;
 use App\Support\MasterData\MasterDataWriter;
 use App\Support\MasterData\WriteContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /*
@@ -11,37 +12,9 @@ use Inertia\Testing\AssertableInertia as Assert;
 | through the master data writer: the row's version rises and audit_logs records it.
 */
 
-function editor(): User
-{
-    return User::find(makeUser(['hq.access', 'master.edit'])->id);
-}
-
-function uid(string $prefix = ''): string
-{
-    return $prefix.strtoupper(substr(str_replace('.', '', uniqid('', true)), -12));
-}
-
-function lastAudit(string $table, string $id): ?object
-{
-    return DB::table('audit_logs')->where('table_name', $table)->where('record_id', $id)->orderByDesc('id')->first();
-}
-
-function versionOf(string $table, string $id): int
-{
-    return (int) DB::table($table)->where('id', $id)->value('version');
-}
-
 function newUnit(string $code = '', bool $decimal = false): string
 {
     return app(MasterDataWriter::class)->create('units', ['code' => $code ?: uid('U'), 'name' => 'Satuan uji', 'allow_decimal' => $decimal], WriteContext::system());
-}
-
-function newBranch(): string
-{
-    $writer = app(MasterDataWriter::class);
-    $entity = $writer->create('entities', ['code' => uid('E'), 'name' => 'PT Uji'], WriteContext::system());
-
-    return $writer->create('branches', ['entity_id' => $entity, 'code' => uid('B'), 'name' => 'Cabang Uji'], WriteContext::system());
 }
 
 function setUniform(?bool $value): void
@@ -222,7 +195,39 @@ it('lists products with search by code, name or barcode, filters and paging', fu
     $find('q=&page=1')->assertInertia(fn (Assert $p) => $p->where('items.per_page', 25));
 });
 
-it('soft-deletes a product with its units and barcodes', function () {
+it('refuses to delete a product that was ever used and offers Nonaktif instead', function (string $usage) {
+    $this->actingAs(editor());
+    $id = createProduct();
+    $writer = app(MasterDataWriter::class);
+    $node = $writer->create('nodes', ['branch_id' => newBranch(), 'code' => 'N'.substr(uid(), -9), 'name' => 'Toko', 'type' => 'STORE'], WriteContext::system());
+    $location = $writer->create('locations', ['node_id' => $node, 'code' => 'DISPLAY', 'name' => 'Display', 'type' => 'DISPLAY', 'is_sellable' => true], WriteContext::system());
+    match ($usage) {
+        'stock ledger' => DB::table('stock_ledger')->insert([
+            'id' => (string) Str::uuid7(), 'node_id' => $node, 'location_id' => $location, 'product_id' => $id,
+            'base_qty' => '1.0000', 'doc_type' => 'ADJUSTMENT', 'doc_id' => (string) Str::uuid7(), 'occurred_at' => now('UTC'),
+        ]),
+        'stock' => DB::table('stock_balances')->insert([
+            'location_id' => $location, 'product_id' => $id, 'expiry_key' => '9999-12-31', 'base_qty' => '3.0000',
+        ]),
+        'cost' => DB::table('product_costs')->insert([
+            'entity_id' => DB::table('branches')->where('id', DB::table('nodes')->where('id', $node)->value('branch_id'))->value('entity_id'),
+            'product_id' => $id, 'base_qty' => '0', 'total_value' => '0', 'average_cost' => '3500',
+        ]),
+    };
+
+    $this->delete("/master-data/products/{$id}")
+        ->assertSessionHasErrors(['delete', 'delete_used']);
+    expect(session('errors')->first('delete'))->toContain('tidak bisa dihapus')
+        ->and(DB::table('products')->where('id', $id)->value('deleted_at'))->toBeNull();
+
+    $v = versionOf('products', $id);
+    $this->post("/master-data/products/{$id}/deactivate")->assertRedirect();
+    expect(DB::table('products')->where('id', $id)->value('status'))->toBe('INACTIVE')
+        ->and(versionOf('products', $id))->toBeGreaterThan($v)
+        ->and(lastAudit('products', $id)->action)->toBe('UPDATE');
+})->with(['stock ledger', 'stock', 'cost']);
+
+it('soft-deletes a product that was never used, with its units and barcodes', function () {
     $this->actingAs(editor());
     $id = createProduct();
     $unit = baseUnitOf($id);

@@ -124,10 +124,18 @@ final class MasterDataWriter
         return (int) (DB::table('master_version')->where('id', 1)->value('last_version') ?? 0);
     }
 
+    /**
+     * Lock the row first: migration 0001 inserts it. An INSERT IGNORE before the lock would take a shared lock on the
+     * existing row, and two writers both holding it while asking FOR UPDATE deadlock (seen in the parallel test).
+     */
     private function nextVersion(): int
     {
-        DB::statement('INSERT IGNORE INTO master_version (id, last_version) VALUES (1, 0)');
-        $current = (int) DB::selectOne('SELECT last_version FROM master_version WHERE id = 1 FOR UPDATE')->last_version;
+        $row = DB::selectOne('SELECT last_version FROM master_version WHERE id = 1 FOR UPDATE');
+        if ($row === null) {
+            DB::statement('INSERT IGNORE INTO master_version (id, last_version) VALUES (1, 0)');
+            $row = DB::selectOne('SELECT last_version FROM master_version WHERE id = 1 FOR UPDATE');
+        }
+        $current = (int) $row->last_version;
         DB::update('UPDATE master_version SET last_version = ? WHERE id = 1', [$current + 1]);
 
         return $current + 1;

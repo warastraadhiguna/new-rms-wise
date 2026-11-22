@@ -979,8 +979,9 @@ export default function ProductForm(props: Props) {
                     open
                     onOpenChange={setDeleting}
                     title="Hapus barang?"
-                    message={`${product.sku} — ${product.name} beserta satuan jual dan barcodenya dihapus (riwayat harga tetap tersimpan).`}
+                    message={`${product.sku} — ${product.name} akan dihapus. Hanya barang yang belum pernah dipakai yang bisa dihapus.`}
                     url={`${LIST}/${product.id}`}
+                    deactivateUrl={`${LIST}/${product.id}/deactivate`}
                 />
             )}
         </>

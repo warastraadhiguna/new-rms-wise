@@ -148,12 +148,15 @@ export function ConfirmDelete({
     title,
     message,
     url,
+    deactivateUrl,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     title: string;
     message: string;
     url: string;
+    /** When the server refuses because the record is in use (errors.delete_used): offer "Jadikan Nonaktif". */
+    deactivateUrl?: string;
 }) {
     const [processing, setProcessing] = useState(false);
     const { errors } = usePage().props as { errors?: Record<string, string> };
@@ -189,6 +192,24 @@ export function ConfirmDelete({
                     >
                         Batal
                     </Button>
+                    {deactivateUrl && errors?.delete_used && (
+                        <Button
+                            variant="secondary"
+                            onClick={() =>
+                                router.post(
+                                    deactivateUrl,
+                                    {},
+                                    {
+                                        preserveScroll: true,
+                                        onSuccess: () => onOpenChange(false),
+                                    },
+                                )
+                            }
+                            data-test="deactivate-button"
+                        >
+                            Jadikan Nonaktif
+                        </Button>
+                    )}
                     <Button
                         variant="destructive"
                         onClick={remove}

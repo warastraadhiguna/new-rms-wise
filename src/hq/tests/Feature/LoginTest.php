@@ -128,9 +128,10 @@ it('shows every menu page to a logged-in user', function () {
     $user = makeUser();
     login($user->username, $user->password);
 
-    foreach (['pembelian' => 'Pembelian', 'stok' => 'Stok', 'laporan' => 'Laporan', 'pengaturan' => 'Pengaturan'] as $path => $title) {
+    foreach (['pembelian' => 'Pembelian', 'stok' => 'Stok', 'laporan' => 'Laporan'] as $path => $title) {
         $this->get("/{$path}")->assertOk()->assertInertia(fn (Assert $page) => $page->component('placeholder')->where('title', $title));
     }
+    $this->get('/pengaturan')->assertOk()->assertInertia(fn (Assert $page) => $page->component('settings/index'));
 });
 
 it('requires both fields', function () {
