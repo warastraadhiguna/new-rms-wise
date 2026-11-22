@@ -39,6 +39,12 @@ public sealed partial class LocationTransferListViewModel : FormTab
 
     public ObservableCollection<TransferListRow> Rows { get; } = [];
 
+    /// <summary>The user may create transfers (stock.transfer): the detail offers "Buat Mutasi Balik".</summary>
+    public bool CanReverse { get; set; }
+
+    /// <summary>"Buat Mutasi Balik" was chosen in the detail.</summary>
+    public event EventHandler<LocationTransfer>? ReverseRequested;
+
     [ObservableProperty] private DateTime? _fromDate;
     [ObservableProperty] private DateTime? _toDate;
     [ObservableProperty] private TransferListRow? _selectedRow;
@@ -90,7 +96,8 @@ public sealed partial class LocationTransferListViewModel : FormTab
         try
         {
             var transfer = await _api.GetLocationTransferAsync(row.Id);
-            _dialogs.ShowDocumentDetail($"Mutasi Lokasi {transfer.Number}", "Detail mutasi lokasi.", TransferDetailText.Lines(transfer));
+            if (ReversalDetail.Show(_dialogs, transfer, CanReverse))
+                ReverseRequested?.Invoke(this, transfer);
         }
         catch (NodeApiException ex)
         {

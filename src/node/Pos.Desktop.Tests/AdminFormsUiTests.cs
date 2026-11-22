@@ -130,6 +130,36 @@ public class AdminFormsUiTests : IDisposable
         Assert.Single(vm.Tabs);
     });
 
+
+    [Fact]
+    public void Another_cashiers_shift_locks_penjualan_but_stock_screens_work()
+    {
+        var session = new SessionState();
+        session.SetLogin(Samples.LoginWith("sale.create", "stock.view"));
+        session.ForeignShift = Samples.Shift(cashierId: Samples.OtherUserId) with { CashierName = "Kasir Satu" };
+        var vm = new MainViewModel(session, new FormFactories(
+            Sales: () => throw new InvalidOperationException("Form Penjualan must not open"),
+            StockTotal: StockTotal,
+            StockCheck: StockCheck));
+
+        WithMain(vm, window =>
+        {
+            var sales = Find<MenuItem>(window, "SalesMenu");
+            Assert.True(sales.IsVisible);
+            sales.IsSubmenuOpen = true;
+            DoEvents();
+            Assert.False(Find<MenuItem>(window, "SalesFormMenuItem").IsEnabled);
+            var lockItem = Find<MenuItem>(window, "SalesLockMenuItem");
+            Assert.Equal(Visibility.Visible, lockItem.Visibility);
+            Assert.Equal("Shift milik Kasir Satu sedang terbuka di PC ini (TK01-SH-202611-000007)", lockItem.Header);
+            sales.IsSubmenuOpen = false;
+
+            Assert.IsType<StockTotalViewModel>(Assert.Single(vm.Tabs));             // starts in Stok Total, not in selling
+            PressKey(window, Key.F2);
+            Assert.Single(vm.Tabs);
+            Assert.True(Find<MenuItem>(window, "StockMenu").IsVisible);
+        });
+    }
     [Fact]
     public void Tab_close_button_closes_the_form_and_the_menu_reopens_it() => WithMain(Main("stock.view"), window =>
     {

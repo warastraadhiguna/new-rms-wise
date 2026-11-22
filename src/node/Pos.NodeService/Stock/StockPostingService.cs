@@ -101,10 +101,11 @@ public sealed class StockPostingService
     /// <summary>
     /// A location transfer document inside the caller's transaction (no commit, no retry): every request moves one
     /// product FEFO from its source to its destination, grouped per expiry (one line id per expiry). Requests are
-    /// applied in order, so a product entered twice sees the first move. Returns the lines per request.
+    /// applied in order, so a product entered twice sees the first move. <paramref name="allowExpired"/>: expired stock
+    /// is moved too, earliest first (destination DAMAGED). Returns the lines per request.
     /// </summary>
     public static Task<IReadOnlyList<IReadOnlyList<StockTransferLine>>> TransferWithinAsync(
-        MySqlConnection connection, MySqlTransaction transaction, IReadOnlyList<StockTransferRequest> requests,
+        MySqlConnection connection, MySqlTransaction transaction, IReadOnlyList<StockTransferRequest> requests, bool allowExpired,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(requests);
@@ -119,7 +120,7 @@ public sealed class StockPostingService
                 {
                     var lines = StockTransfer.TransferByExpiry(request, balances,
                         BranchClock.Today(request.OccurredAt, context.TimeZones[request.FromLocationId]),
-                        context.TrackExpiry[request.ProductId]);
+                        context.TrackExpiry[request.ProductId], allowExpired);
                     balances = StockBalances.Apply(balances, lines.SelectMany(l => l.Out.Concat(l.In)));
                     result.Add(lines);
                 }

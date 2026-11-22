@@ -260,6 +260,98 @@ public class LocationTransferApiTests(DatabaseFixture db) : IAsyncLifetime
         Assert.Equal(9m, card.Dec("closing_balance"));                            // the node total did not change
     }
 
+    // ---- owner decisions: DAMAGED takes expired first; Buat Mutasi Balik ---------------------------
+
+    private static int _damaged;
+
+    private async Task<Guid> DamagedLocationAsync()
+    {
+        var id = Guid.CreateVersion7();
+        await using var connection = await db.Factory.OpenAsync();
+        await connection.ExecuteAsync(
+            "INSERT INTO locations (id, node_id, code, name, type, is_sellable) VALUES (@id, @NodeId, @code, 'Barang rusak', 'DAMAGED', 0)",
+            new { id, db.NodeId, code = $"RUSAK{Interlocked.Increment(ref _damaged):00}" });
+        return id;
+    }
+
+    [DatabaseFact]
+    public async Task Towards_a_damaged_location_expired_stock_goes_first_then_fefo()
+    {
+        var expired = Today.AddDays(-5);
+        var near = Today.AddDays(10);
+        var later = Today.AddDays(100);
+        var product = await StorageProductAsync((expired, 3m), (near, 4m), (later, 5m));
+        var damaged = await DamagedLocationAsync();
+        var (_, token) = await TransferStaffAsync();
+
+        var (_, preview) = await _client.PostAsync("/api/v1/stock/transfers/preview", new
+        {
+            FromLocationId = db.LocationB,
+            ToLocationId = damaged,
+            Lines = new[] { new { product.ProductUnitId, Qty = 5m } },
+        }, token);
+        var (_, display) = await _client.PostAsync("/api/v1/stock/transfers/preview", new
+        {
+            FromLocationId = db.LocationB,
+            ToLocationId = db.LocationA,
+            Lines = new[] { new { product.ProductUnitId, Qty = 5m } },
+        }, token);
+        var (status, saved) = await _client.PostAsync("/api/v1/stock/transfers",
+            Body(Guid.CreateVersion7(), db.LocationB, damaged, (product.ProductUnitId, 5m)), token);
+
+        static List<(string, decimal)> Allocations(JsonElement line, string property) =>
+            line.GetProperty(property).EnumerateArray().Select(a => (a.Str("expiry_date"), a.Dec("base_qty"))).ToList();
+        var damagedLine = preview.GetProperty("lines")[0];
+        Assert.Equal([(expired.ToString("yyyy-MM-dd"), 3m), (near.ToString("yyyy-MM-dd"), 2m)], Allocations(damagedLine, "allocations"));
+        Assert.Equal(12m, damagedLine.Dec("available"));                           // expired counts towards DAMAGED
+        Assert.Equal([(near.ToString("yyyy-MM-dd"), 4m), (later.ToString("yyyy-MM-dd"), 1m)],
+            Allocations(display.GetProperty("lines")[0], "allocations"));          // other destinations: expired stays
+        Assert.Equal(9m, display.GetProperty("lines")[0].Dec("available"));
+
+        Assert.Equal(HttpStatusCode.Created, status);
+        Assert.Equal([(expired.ToString("yyyy-MM-dd"), 3m), (near.ToString("yyyy-MM-dd"), 2m)],
+            Allocations(saved.GetProperty("lines")[0], "expiries"));
+        var buckets = await BucketsAsync(product.ProductId);
+        Assert.False(buckets.ContainsKey((db.LocationB, expired)));
+        Assert.Equal(3m, buckets[(damaged, expired)]);
+        Assert.Equal(12m, buckets.Values.Sum());
+    }
+
+    [DatabaseFact]
+    public async Task A_transfer_can_be_reversed_once_in_the_opposite_direction()
+    {
+        var product = await StorageProductAsync((Today.AddDays(60), 10m));
+        var (_, token) = await TransferStaffAsync();
+        var (_, original) = await _client.PostAsync("/api/v1/stock/transfers",
+            Body(Guid.CreateVersion7(), db.LocationB, db.LocationA, (product.ProductUnitId, 4m)), token);
+
+        object Reverse(Guid from, Guid to) => new
+        {
+            Id = Guid.CreateVersion7(), FromLocationId = from, ToLocationId = to,
+            Lines = new[] { new { product.ProductUnitId, Qty = 4m } }, ReversesId = original.Id(),
+        };
+
+        var (wrongWay, wrongWayBody) = await _client.PostAsync("/api/v1/stock/transfers", Reverse(db.LocationB, db.LocationA), token);
+        var (status, reversal) = await _client.PostAsync("/api/v1/stock/transfers", Reverse(db.LocationA, db.LocationB), token);
+        var (again, againBody) = await _client.PostAsync("/api/v1/stock/transfers", Reverse(db.LocationA, db.LocationB), token);
+        var (_, originalNow) = await _client.GetAsync($"/api/v1/stock/transfers/{original.Id()}", token);
+        var (unknown, unknownBody) = await _client.PostAsync("/api/v1/stock/transfers", new
+        {
+            Id = Guid.CreateVersion7(), FromLocationId = db.LocationA, ToLocationId = db.LocationB,
+            Lines = new[] { new { product.ProductUnitId, Qty = 1m } }, ReversesId = Guid.CreateVersion7(),
+        }, token);
+
+        Assert.Equal((HttpStatusCode.UnprocessableEntity, "reversal_direction"), (wrongWay, wrongWayBody.Str("code")));
+        Assert.Equal(HttpStatusCode.Created, status);
+        Assert.Equal((original.Id(), original.Str("number")), (reversal.Id("reverses_id"), reversal.Str("reverses_number")));
+        Assert.Equal((HttpStatusCode.Conflict, "already_reversed"), (again, againBody.Str("code")));
+        Assert.Equal((reversal.Id(), reversal.Str("number")), (originalNow.Id("reversed_by_id"), originalNow.Str("reversed_by_number")));
+        Assert.Equal((HttpStatusCode.UnprocessableEntity, "unknown_transfer"), (unknown, unknownBody.Str("code")));
+        var buckets = await BucketsAsync(product.ProductId);
+        Assert.Equal(10m, buckets[(db.LocationB, Today.AddDays(60))]);            // back where it started
+        Assert.False(buckets.ContainsKey((db.LocationA, Today.AddDays(60))));
+    }
+
     [DatabaseFact]
     public async Task Seed_gives_stock_transfer_to_store_admin_and_warehouse_staff_only()
     {

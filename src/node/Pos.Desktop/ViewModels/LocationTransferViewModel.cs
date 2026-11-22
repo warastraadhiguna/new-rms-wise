@@ -101,6 +101,17 @@ public sealed partial class LocationTransferViewModel : FormTab
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private FocusRequest? _focusRequest;
 
+    /// <summary>"Buat Mutasi Balik": the transfer this document reverses (locations are fixed, opposite direction).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReversal), nameof(ReversalText), nameof(CanChangeLocations))]
+    private LocationTransfer? _reversing;
+
+    public bool IsReversal => Reversing is not null;
+
+    public bool CanChangeLocations => Reversing is null;
+
+    public string? ReversalText => Reversing is { } t ? $"Mutasi balik dari {t.Number} ({t.ToLocationCode} → {t.FromLocationCode})" : null;
+
     partial void OnFromLocationChanged(LocationOption? value) => DocumentChanged();
     partial void OnToLocationChanged(LocationOption? value) => DocumentChanged();
 
@@ -152,6 +163,45 @@ public sealed partial class LocationTransferViewModel : FormTab
         {
             StatusMessage = ex.Message;
         }
+    }
+
+    /// <summary>
+    /// "Buat Mutasi Balik": fills the form with the opposite direction and the same products and quantities (in the
+    /// unit typed on the original). Locations are fixed; lines can still be edited (e.g. return only part).
+    /// </summary>
+    public async Task StartReversalAsync(LocationTransfer original)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        await Initialization;
+        if (Lines.Count > 0 && !_dialogs.Confirm("Form Mutasi Lokasi masih berisi barang. Ganti dengan mutasi balik?"))
+            return;
+
+        Lines.Clear();
+        Reversing = original;
+        FromLocation = Locations.FirstOrDefault(l => l.Id == original.ToLocationId);
+        ToLocation = Locations.FirstOrDefault(l => l.Id == original.FromLocationId);
+        NotesText = $"Balik {original.Number}";
+        try
+        {
+            foreach (var line in original.Lines)
+            {
+                var units = await _api.GetProductUnitsAsync(line.ProductId);
+                var unit = units.FirstOrDefault(u => u.ProductUnitId == line.ProductUnitId)
+                           ?? units.FirstOrDefault(u => u.Conversion == 1m) ?? units.FirstOrDefault();
+                if (unit is null)
+                    continue;
+                var qty = unit.ProductUnitId == line.ProductUnitId && line.Qty is { } typed ? typed : line.BaseQty / unit.Conversion;
+                Lines.Add(new TransferLineItem(unit, qty));
+            }
+            StatusMessage = null;
+        }
+        catch (NodeApiException ex)
+        {
+            StatusMessage = ex.Message;
+        }
+        SelectedLine = Lines.FirstOrDefault();
+        DocumentChanged();
+        RequestFocus("search");
     }
 
     // ---- adding lines -----------------------------------------------------------------------------
@@ -306,7 +356,7 @@ public sealed partial class LocationTransferViewModel : FormTab
         var snapshot = Lines.ToList();
         try
         {
-            var preview = await _api.PreviewLocationTransferAsync(from, Requests(snapshot));
+            var preview = await _api.PreviewLocationTransferAsync(from, Requests(snapshot), toLocationId: ToLocation?.Id);
             if (!snapshot.SequenceEqual(Lines))
                 return;                                                     // changed meanwhile; a newer preview follows
             foreach (var (line, result) in snapshot.Zip(preview.Lines))
@@ -352,12 +402,14 @@ public sealed partial class LocationTransferViewModel : FormTab
         try
         {
             var saved = await _api.CreateLocationTransferAsync(new CreateLocationTransferRequest(
-                _pendingId.Value, from, to, Requests(Lines), string.IsNullOrWhiteSpace(NotesText) ? null : NotesText.Trim()));
+                _pendingId.Value, from, to, Requests(Lines), string.IsNullOrWhiteSpace(NotesText) ? null : NotesText.Trim(),
+                Reversing?.Id));
             Lines.Clear();
             Products.Clear();
             NotesText = "";
             WarningMessage = null;
             _pendingId = null;
+            Reversing = null;
             StatusMessage = $"Mutasi {saved.Number} tersimpan ({saved.FromLocationCode} → {saved.ToLocationCode}, {saved.Lines.Count} barang).";
         }
         catch (NodeApiException ex) when (ex.Code is "node_unreachable")

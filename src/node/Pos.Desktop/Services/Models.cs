@@ -18,7 +18,8 @@ public sealed record ShiftInfo(
     Guid CashierId,
     string Status,
     DateTime OpenedAt,
-    decimal OpeningCash);
+    decimal OpeningCash,
+    string? CashierName = null);
 
 public sealed record PriceTierInfo(decimal MinQty, decimal Price);
 
@@ -174,7 +175,7 @@ public interface INodeApi
 
     /// <summary>FEFO preview per line from the current stock of the source location.</summary>
     Task<LocationTransferPreview> PreviewLocationTransferAsync(
-        Guid fromLocationId, IReadOnlyList<LocationTransferLineRequest> lines, CancellationToken ct = default);
+        Guid fromLocationId, IReadOnlyList<LocationTransferLineRequest> lines, CancellationToken ct = default, Guid? toLocationId = null);
 
     /// <summary>Daftar Mutasi Lokasi: branch dates from..to inclusive, newest first.</summary>
     Task<IReadOnlyList<LocationTransferSummary>> GetLocationTransfersAsync(DateOnly from, DateOnly to, CancellationToken ct = default);
@@ -218,7 +219,9 @@ public interface IDialogService
     string? AskSaveFile(string suggestedFileName);
 
     /// <summary>A source document as monospace text (Kartu Stok double-click).</summary>
-    void ShowDocumentDetail(string title, string message, IReadOnlyList<string> lines);
+    /// <param name="actionText">An extra button (e.g. "Buat Mutasi Balik"); null = none.</param>
+    /// <returns>True when the extra button was chosen.</returns>
+    bool ShowDocumentDetail(string title, string message, IReadOnlyList<string> lines, string? actionText = null);
 }
 
 /// <summary>Switches between the top-level windows.</summary>
@@ -241,6 +244,12 @@ public sealed class SessionState
     public IReadOnlyList<string> Permissions { get; private set; } = [];
     public ShiftInfo? Shift { get; set; }
 
+    /// <summary>
+    /// Another cashier's shift is open on this PC and the user does not share it: selling is locked, the stock
+    /// screens work, and a user with shift.close may close that shift.
+    /// </summary>
+    public ShiftInfo? ForeignShift { get; set; }
+
     public bool IsLoggedIn => Token is not null;
 
     /// <summary>The logged-in user has this permission ("*" grants all).</summary>
@@ -256,6 +265,7 @@ public sealed class SessionState
         Node = login.Node;
         Permissions = login.Permissions;
         Shift = null;
+        ForeignShift = null;
     }
 
     public void Clear()
@@ -266,6 +276,7 @@ public sealed class SessionState
         Node = null;
         Permissions = [];
         Shift = null;
+        ForeignShift = null;
     }
 }
 
@@ -417,7 +428,8 @@ public sealed record LocationTransferLineRequest(Guid ProductUnitId, decimal Qty
 
 /// <param name="Id">UUID v7 created here; sent again after a network failure so the transfer is stored once.</param>
 public sealed record CreateLocationTransferRequest(
-    Guid Id, Guid FromLocationId, Guid ToLocationId, IReadOnlyList<LocationTransferLineRequest> Lines, string? Notes);
+    Guid Id, Guid FromLocationId, Guid ToLocationId, IReadOnlyList<LocationTransferLineRequest> Lines, string? Notes,
+    Guid? ReversesId = null);
 
 public sealed record ExpiryQty(DateOnly? ExpiryDate, decimal BaseQty);
 
@@ -435,7 +447,8 @@ public sealed record LocationTransferLine(
 /// <param name="TransferredAt">UTC.</param>
 public sealed record LocationTransfer(
     Guid Id, Guid NodeId, string Number, Guid FromLocationId, string FromLocationCode, Guid ToLocationId, string ToLocationCode,
-    DateTime TransferredAt, string TimeZone, string? Notes, Guid CreatedBy, string CreatedByName, IReadOnlyList<LocationTransferLine> Lines);
+    DateTime TransferredAt, string TimeZone, string? Notes, Guid CreatedBy, string CreatedByName, IReadOnlyList<LocationTransferLine> Lines,
+    Guid? ReversesId = null, string? ReversesNumber = null, Guid? ReversedById = null, string? ReversedByNumber = null);
 
 public sealed record LocationTransferSummary(
     Guid Id, string Number, DateTime TransferredAt, string FromLocationCode, string ToLocationCode, string CreatedByName,

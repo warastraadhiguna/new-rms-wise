@@ -38,7 +38,8 @@ public sealed record ShiftDto(
     decimal? CountedCash,
     decimal? Difference,
     string? Notes,
-    int RowVersion);
+    int RowVersion,
+    string? CashierName = null);
 
 /// <summary>
 /// Cashier shifts: one OPEN shift per device. Closing computes the expected drawer cash.
@@ -104,8 +105,10 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
             """, new { deviceId, nodeId = node.Id, open = ShiftStatus.Open }, cancellationToken: cancellationToken))
             ?? throw ApiException.NotFound("no_open_shift", $"Device {deviceId} has no open shift.");
 
+        var cashierName = await c.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT full_name FROM users WHERE id = @CashierId", new { shift.CashierId }, cancellationToken: cancellationToken));
         return new ShiftDto(shift.Id, shift.NodeId, shift.Number, shift.DeviceId, shift.CashierId, shift.Status,
-            shift.OpenedAt, null, shift.OpeningCash, null, null, null, null, null, null, shift.RowVersion);
+            shift.OpenedAt, null, shift.OpeningCash, null, null, null, null, null, null, shift.RowVersion, cashierName);
     }
 
     public async Task<ShiftDto> CloseAsync(CloseShiftRequest request, CancellationToken cancellationToken = default)

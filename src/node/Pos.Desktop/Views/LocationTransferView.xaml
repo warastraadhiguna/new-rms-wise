@@ -39,6 +39,10 @@
 
     <DockPanel Margin="10">
         <TextBlock DockPanel.Dock="Top" Text="Form Mutasi Lokasi" FontSize="24" FontWeight="Bold" Margin="0,4,0,12" />
+        <Border x:Name="ReversalBanner" DockPanel.Dock="Top" Background="#FFF4E0" BorderBrush="#E0B070" BorderThickness="1"
+                Padding="8,4" Margin="0,0,0,8" Visibility="{Binding ReversalText, Converter={StaticResource VisibleWhenText}}">
+            <TextBlock x:Name="ReversalText" Text="{Binding ReversalText}" FontWeight="SemiBold" />
+        </Border>
 
         <!-- Lokasi Asal -> Lokasi Tujuan, Keterangan -->
         <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
@@ -52,9 +56,11 @@
             </Grid.ColumnDefinitions>
             <TextBlock Text="Lokasi Asal" VerticalAlignment="Center" Margin="0,0,8,0" />
             <ComboBox x:Name="FromLocationBox" Grid.Column="1" ItemsSource="{Binding Locations}" DisplayMemberPath="Display"
+                      IsEnabled="{Binding CanChangeLocations}"
                       SelectedItem="{Binding FromLocation}" />
             <TextBlock Grid.Column="2" Text="→  Lokasi Tujuan" VerticalAlignment="Center" Margin="12,0,8,0" />
             <ComboBox x:Name="ToLocationBox" Grid.Column="3" ItemsSource="{Binding Locations}" DisplayMemberPath="Display"
+                      IsEnabled="{Binding CanChangeLocations}"
                       SelectedItem="{Binding ToLocation}" />
             <TextBlock Grid.Column="4" Text="Keterangan" VerticalAlignment="Center" Margin="12,0,8,0" />
             <TextBox x:Name="NotesBox" Grid.Column="5" Padding="2" Text="{Binding NotesText, UpdateSourceTrigger=PropertyChanged}" />

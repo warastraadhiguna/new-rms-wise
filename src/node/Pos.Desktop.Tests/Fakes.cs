@@ -200,6 +200,7 @@ public sealed class FakeNodeApi : INodeApi
     /// <summary>Base stock at the source per product (default 30) for the preview.</summary>
     public Dictionary<Guid, decimal> SourceStock { get; } = [];
     public List<(Guid From, IReadOnlyList<LocationTransferLineRequest> Lines)> Previews { get; } = [];
+    public List<Guid?> PreviewTargets { get; } = [];
     public List<CreateLocationTransferRequest> TransferRequests { get; } = [];
 
     /// <summary>Thrown by the next CreateLocationTransferAsync (then cleared), e.g. a network failure.</summary>
@@ -207,10 +208,11 @@ public sealed class FakeNodeApi : INodeApi
     public List<LocationTransferSummary> TransferList { get; } = [];
 
     public Task<LocationTransferPreview> PreviewLocationTransferAsync(
-        Guid fromLocationId, IReadOnlyList<LocationTransferLineRequest> lines, CancellationToken ct = default)
+        Guid fromLocationId, IReadOnlyList<LocationTransferLineRequest> lines, CancellationToken ct = default, Guid? toLocationId = null)
     {
         Calls.Add($"transfer-preview:{fromLocationId}:{lines.Count}");
         Previews.Add((fromLocationId, lines));
+        PreviewTargets.Add(toLocationId);
         var used = new Dictionary<Guid, decimal>();
         var result = lines.Select((l, i) =>
         {
@@ -242,6 +244,7 @@ public sealed class FakeNodeApi : INodeApi
             FromLocationId = request.FromLocationId,
             ToLocationId = request.ToLocationId,
             Notes = request.Notes,
+            ReversesId = request.ReversesId,
         });
     }
 
@@ -251,10 +254,13 @@ public sealed class FakeNodeApi : INodeApi
         return Task.FromResult<IReadOnlyList<LocationTransferSummary>>(TransferList);
     }
 
+    /// <summary>The detail returned by GetLocationTransferAsync (default: <see cref="Transfers.Sample"/>).</summary>
+    public Func<Guid, LocationTransfer>? OnTransfer { get; set; }
+
     public Task<LocationTransfer> GetLocationTransferAsync(Guid transferId, CancellationToken ct = default)
     {
         Calls.Add($"transfer:{transferId}");
-        return Task.FromResult(Transfers.Sample(transferId));
+        return Task.FromResult(OnTransfer?.Invoke(transferId) ?? Transfers.Sample(transferId));
     }
 }
 
@@ -321,7 +327,19 @@ public sealed class FakeDialogs : IDialogService
 
     public List<(string Title, string Message, IReadOnlyList<string> Lines)> Documents { get; } = [];
 
-    public void ShowDocumentDetail(string title, string message, IReadOnlyList<string> lines) { Asked.Add($"document:{title}"); Documents.Add((title, message, lines)); }
+    /// <summary>The action button text offered per detail (null = none).</summary>
+    public List<string?> DocumentActions { get; } = [];
+
+    /// <summary>True = the user presses the offered action button (e.g. "Buat Mutasi Balik").</summary>
+    public bool ChooseDocumentAction { get; set; }
+
+    public bool ShowDocumentDetail(string title, string message, IReadOnlyList<string> lines, string? actionText = null)
+    {
+        Asked.Add($"document:{title}");
+        Documents.Add((title, message, lines));
+        DocumentActions.Add(actionText);
+        return actionText is not null && ChooseDocumentAction;
+    }
 }
 
 public sealed class MemoryCartStore : ICartStore

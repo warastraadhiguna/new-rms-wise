@@ -302,6 +302,141 @@ public class LocationTransferUiTests
         }
     });
 
+
+    // ---- Buat Mutasi Balik -------------------------------------------------------------------------
+
+    [Fact]
+    public void The_preview_tells_the_destination_so_a_damaged_location_takes_expired_stock_first() => WithForm((view, vm) =>
+    {
+        Scan(view, "13589");
+
+        Assert.Equal(Stock.Display.Id, _api.PreviewTargets[^1]);
+        Find<ComboBox>(view, "ToLocationBox").SelectedItem = vm.Locations.Single(l => l.Id == Stock.Storage.Id);
+        Find<ComboBox>(view, "FromLocationBox").SelectedItem = vm.Locations.Single(l => l.Id == Stock.Display.Id);
+        vm.PendingPreview.GetAwaiter().GetResult();
+
+        Assert.Equal(Stock.Storage.Id, _api.PreviewTargets[^1]);
+    });
+
+    private LocationTransferListViewModel ListWithOneTransfer(Guid id)
+    {
+        _api.TransferList.Add(new LocationTransferSummary(id, "TK01-MT-202611-000001", new DateTime(2026, 11, 22, 3, 30, 0, DateTimeKind.Utc),
+            "STORAGE", "DISPLAY", "Admin Toko Dev", 1, "isi etalase", "Asia/Jakarta"));
+        return new LocationTransferListViewModel(_api, _dialogs, () => new DateOnly(2026, 11, 22));
+    }
+
+    [Fact]
+    public void Buat_mutasi_balik_fills_the_form_in_the_opposite_direction_and_saves_the_reference() => OnSta(() =>
+    {
+        var id = Guid.CreateVersion7();
+        ListWithOneTransfer(id);
+        _api.OnUnits = _ => [Samples.Amplop, Samples.AmplopPak];
+        _dialogs.ChooseDocumentAction = true;
+        var vm = Main("stock.view", "stock.transfer");
+        var window = ShowOffScreen(new MainWindow { DataContext = vm });
+        try
+        {
+            Find<MenuItem>(window, "LocationTransferListMenuItem").Command.Execute(null);
+            DoEvents();
+            var list = Assert.IsType<LocationTransferListViewModel>(vm.SelectedTab);
+            list.Initialization.GetAwaiter().GetResult();
+            DoEvents();
+            var tabs = Find<TabControl>(window, "FormTabs");
+            tabs.UpdateLayout();
+            var listView = Assert.Single(VisualTreeSearch.Descendants<LocationTransferListView>(tabs));
+            var rows = Find<DataGrid>(listView, "RowsGrid");
+            rows.SelectedIndex = 0;
+            PressKey(rows, Key.Enter);
+            DoEvents();
+
+            Assert.Equal(ReversalDetail.ActionText, Assert.Single(_dialogs.DocumentActions));
+            var form = Assert.IsType<LocationTransferViewModel>(vm.SelectedTab);
+            form.PendingPreview.GetAwaiter().GetResult();
+            tabs.UpdateLayout();
+            DoEvents();
+            var view = Assert.Single(VisualTreeSearch.Descendants<LocationTransferView>(tabs));
+
+            var from = Find<ComboBox>(view, "FromLocationBox");
+            var to = Find<ComboBox>(view, "ToLocationBox");
+            Assert.Equal(Stock.Display.Id, ((LocationOption)from.SelectedItem).Id);
+            Assert.Equal(Stock.Storage.Id, ((LocationOption)to.SelectedItem).Id);
+            Assert.False(from.IsEnabled);
+            Assert.False(to.IsEnabled);
+            Assert.Equal(Visibility.Visible, Find<Border>(view, "ReversalBanner").Visibility);
+            Assert.Equal("Mutasi balik dari TK01-MT-202611-000001 (DISPLAY → STORAGE)", Find<TextBlock>(view, "ReversalText").Text);
+            Assert.Equal("Balik TK01-MT-202611-000001", Find<TextBox>(view, "NotesBox").Text);
+            Assert.Equal([("PAK", 2m)], form.Lines.Select(l => (l.UnitCode, l.Qty)));
+
+            PressKey(Find<TextBox>(view, "SearchBox"), Key.F6);
+            DoEvents();
+
+            var request = Assert.Single(_api.TransferRequests);
+            Assert.Equal((Stock.Display.Id, Stock.Storage.Id, (Guid?)id), (request.FromLocationId, request.ToLocationId, request.ReversesId));
+            Assert.Equal([(Samples.AmplopPak.ProductUnitId, 2m)], request.Lines.Select(l => (l.ProductUnitId, l.Qty)));
+            Assert.Equal(Visibility.Collapsed, Find<Border>(view, "ReversalBanner").Visibility);
+            Assert.True(from.IsEnabled);                                           // the next transfer is an ordinary one
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    [Fact]
+    public void Buat_mutasi_balik_is_not_offered_without_stock_transfer_or_when_already_reversed() => OnSta(() =>
+    {
+        var id = Guid.CreateVersion7();
+        var list = ListWithOneTransfer(id);
+        list.Initialization.GetAwaiter().GetResult();
+
+        list.CanReverse = false;
+        list.OpenDetailCommand.Execute(null);
+        list.CanReverse = true;
+        _api.OnTransfer = transferId => Transfers.Sample(transferId) with
+        {
+            ReversedById = Guid.CreateVersion7(), ReversedByNumber = "TK01-MT-202611-000002",
+        };
+        list.OpenDetailCommand.Execute(null);
+
+        Assert.Equal([null, null], _dialogs.DocumentActions);
+        Assert.Contains("sudah dibalik oleh TK01-MT-202611-000002", _dialogs.Documents[1].Message);
+        Assert.Contains("Dibalik   : TK01-MT-202611-000002", _dialogs.Documents[1].Lines);
+    });
+
+    [Fact]
+    public void Buat_mutasi_balik_from_the_kartu_stok_opens_the_reversal_form() => OnSta(() =>
+    {
+        var transferId = Guid.CreateVersion7();
+        var card = Stock.Card(1);
+        _api.StockCardData = card with
+        {
+            Rows = [card.Rows[0] with { DocType = "LOCATION_TRANSFER", DocLabel = "Mutasi", DocId = transferId, DocNumber = "TK01-MT-202611-000001" }],
+        };
+        _api.OnUnits = _ => [Samples.Amplop, Samples.AmplopPak];
+        _dialogs.ChooseDocumentAction = true;
+        var vm = Main("stock.view", "stock.transfer");
+        var window = ShowOffScreen(new MainWindow { DataContext = vm });
+        try
+        {
+            vm.OpenStockCardAsync(Samples.AmplopId, null).GetAwaiter().GetResult();
+            var tabs = Find<TabControl>(window, "FormTabs");
+            tabs.UpdateLayout();
+            DoEvents();
+            var cardView = Assert.Single(VisualTreeSearch.Descendants<StockCardView>(tabs));
+            var grid = Find<DataGrid>(cardView, "RowsGrid");
+            grid.SelectedIndex = 1;
+            PressKey(grid, Key.Enter);
+            DoEvents();
+
+            var form = Assert.IsType<LocationTransferViewModel>(vm.SelectedTab);
+            Assert.Equal(transferId, form.Reversing?.Id);
+            Assert.Equal((Stock.Display.Id, Stock.Storage.Id), (form.FromLocation?.Id, form.ToLocation?.Id));
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
     // ---- menu --------------------------------------------------------------------------------------
 
     private MainViewModel Main(params string[] permissions)
@@ -311,6 +446,7 @@ public class LocationTransferUiTests
         return new MainViewModel(session, new FormFactories(
             StockTotal: () => new StockTotalViewModel(_api, _dialogs, new MemoryPreferenceStore<StockTotalViewSettings>(new()), (_, _) => Task.CompletedTask),
             StockCheck: () => new StockCheckViewModel(_api, _dialogs),
+            StockCard: () => new StockCardViewModel(_api, _dialogs, () => new DateOnly(2026, 11, 22)),
             LocationTransfer: Form,
             LocationTransferList: () => new LocationTransferListViewModel(_api, _dialogs, () => new DateOnly(2026, 11, 22))));
     }

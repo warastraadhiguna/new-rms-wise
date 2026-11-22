@@ -36,7 +36,7 @@ public class DatabaseTests(DatabaseFixture db)
 
         Assert.True(outcome.Successful);
         Assert.Empty(outcome.ScriptsApplied);
-        Assert.Equal("0006_location_transfer_lines.sql", migrator.GetAppliedScripts().Order().Last());
+        Assert.Equal("0007_location_transfer_reversal.sql", migrator.GetAppliedScripts().Order().Last());
     }
 
     [DatabaseFact]

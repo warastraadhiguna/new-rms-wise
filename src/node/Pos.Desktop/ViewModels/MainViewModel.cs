@@ -55,8 +55,18 @@ public sealed partial class MainViewModel : ObservableObject
 
     public string NodeName => _session.Node is { } node ? $"{node.Code} - {node.Name}" : "";
 
-    /// <summary>Menu "Penjualan".</summary>
-    public bool CanSell => _session.Has(Permissions.SaleCreate) && _forms.Sales is not null;
+    /// <summary>The user is a seller (menu "Penjualan" is shown), even when selling is locked on this PC.</summary>
+    public bool HasSalesMenu => _session.Has(Permissions.SaleCreate) && _forms.Sales is not null;
+
+    /// <summary>Form Penjualan can be opened: a seller and no other cashier's shift open on this PC.</summary>
+    public bool CanSell => HasSalesMenu && _session.ForeignShift is null;
+
+    /// <summary>"Shift milik … sedang terbuka di PC ini" when another cashier's shift locks selling, else null.</summary>
+    public string? SalesLockText => _session.ForeignShift is { } shift
+        ? $"Shift milik {shift.CashierName ?? "kasir lain"} sedang terbuka di PC ini ({shift.Number})"
+        : null;
+
+    public bool IsSalesLocked => SalesLockText is not null;
 
     /// <summary>Stok Total, Cek Stok and the menu "Laporan".</summary>
     public bool CanViewStock => _session.Has(Permissions.StockView);
@@ -69,18 +79,36 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Menu Stok → Form Mutasi Lokasi (one tab).</summary>
     [RelayCommand]
-    private void OpenLocationTransfer()
+    private void OpenLocationTransfer() => LocationTransferTab();
+
+    private LocationTransferViewModel? LocationTransferTab()
     {
-        if (CanTransfer && _forms.LocationTransfer is not null)
-            Show(Tabs.OfType<LocationTransferViewModel>().FirstOrDefault() ?? _forms.LocationTransfer());
+        if (!CanTransfer || _forms.LocationTransfer is null)
+            return null;
+        var form = Tabs.OfType<LocationTransferViewModel>().FirstOrDefault() ?? _forms.LocationTransfer();
+        Show(form);
+        return form;
     }
+
+    /// <summary>"Buat Mutasi Balik" from a transfer's detail: Form Mutasi Lokasi filled in the opposite direction.</summary>
+    public Task StartTransferReversalAsync(LocationTransfer original) =>
+        LocationTransferTab() is { } form ? form.StartReversalAsync(original) : Task.CompletedTask;
 
     /// <summary>Menu Stok → Daftar Mutasi Lokasi (one tab).</summary>
     [RelayCommand]
     private void OpenLocationTransferList()
     {
-        if (ShowStockMenu && _forms.LocationTransferList is not null)
-            Show(Tabs.OfType<LocationTransferListViewModel>().FirstOrDefault() ?? _forms.LocationTransferList());
+        if (!ShowStockMenu || _forms.LocationTransferList is null)
+            return;
+        if (Tabs.OfType<LocationTransferListViewModel>().FirstOrDefault() is { } open)
+        {
+            Show(open);
+            return;
+        }
+        var form = _forms.LocationTransferList();
+        form.CanReverse = CanTransfer;
+        form.ReverseRequested += (_, transfer) => _ = StartTransferReversalAsync(transfer);
+        Show(form);
     }
 
     public ObservableCollection<FormTab> Tabs { get; } = [];
@@ -149,7 +177,13 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (!CanViewStock || _forms.StockCard is null)
             return null;
-        var form = Tabs.OfType<StockCardViewModel>().FirstOrDefault() ?? _forms.StockCard();
+        var form = Tabs.OfType<StockCardViewModel>().FirstOrDefault();
+        if (form is null)
+        {
+            form = _forms.StockCard();
+            form.CanReverse = CanTransfer;
+            form.ReverseTransferRequested += (_, transfer) => _ = StartTransferReversalAsync(transfer);
+        }
         Show(form);
         return form;
     }

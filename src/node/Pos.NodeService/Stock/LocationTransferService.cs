@@ -17,16 +17,20 @@ namespace Pos.NodeService.Stock;
 public sealed record LocationTransferLineRequest(Guid ProductUnitId, decimal Qty);
 
 /// <param name="Id">UUID v7 created by the client; sending it again returns the stored transfer.</param>
+/// <param name="ReversesId">"Buat Mutasi Balik": the transfer this one reverses (opposite direction, once per transfer).</param>
 public sealed record CreateLocationTransferRequest(
-    Guid Id, Guid FromLocationId, Guid ToLocationId, IReadOnlyList<LocationTransferLineRequest>? Lines, string? Notes = null);
+    Guid Id, Guid FromLocationId, Guid ToLocationId, IReadOnlyList<LocationTransferLineRequest>? Lines, string? Notes = null,
+    Guid? ReversesId = null);
 
-public sealed record LocationTransferPreviewRequest(Guid FromLocationId, IReadOnlyList<LocationTransferLineRequest>? Lines);
+/// <param name="ToLocationId">The destination decides the rule: DAMAGED takes expired stock first.</param>
+public sealed record LocationTransferPreviewRequest(
+    Guid FromLocationId, IReadOnlyList<LocationTransferLineRequest>? Lines, Guid? ToLocationId = null);
 
 public sealed record ExpiryQtyDto(DateOnly? ExpiryDate, decimal BaseQty);
 
-/// <summary>What saving would take from the source, per entered line (FEFO, expired stock is not moved).</summary>
+/// <summary>What saving would take from the source, per entered line (FEFO; expired stock only towards a DAMAGED location).</summary>
 /// <param name="StockAtSource">All stock of the product at the source (base unit), expired included.</param>
-/// <param name="Available">Stock that FEFO may move (not expired), before this line.</param>
+/// <param name="Available">Stock that may be moved (not expired, or everything towards DAMAGED), before this line.</param>
 /// <param name="Shortage">How much of the line the source does not have (moved anyway; the source goes negative).</param>
 public sealed record LocationTransferPreviewLineDto(
     int LineNo, Guid ProductId, Guid ProductUnitId, decimal Qty, decimal BaseQty, string BaseUnitCode,
@@ -39,6 +43,8 @@ public sealed record LocationTransferLineDto(
     string BaseUnitCode, decimal BaseQty, IReadOnlyList<ExpiryQtyDto> Expiries);
 
 /// <param name="TransferredAt">UTC.</param>
+/// <param name="ReversesId">This transfer reverses that one ("Mutasi Balik").</param>
+/// <param name="ReversedById">The transfer that reversed this one; a transfer is reversed at most once.</param>
 public sealed record LocationTransferDto(
     Guid Id,
     Guid NodeId,
@@ -52,7 +58,11 @@ public sealed record LocationTransferDto(
     string? Notes,
     Guid CreatedBy,
     string CreatedByName,
-    IReadOnlyList<LocationTransferLineDto> Lines);
+    IReadOnlyList<LocationTransferLineDto> Lines,
+    Guid? ReversesId,
+    string? ReversesNumber,
+    Guid? ReversedById,
+    string? ReversedByNumber);
 
 public sealed record LocationTransferResult(LocationTransferDto Transfer, bool Replayed);
 
@@ -94,33 +104,61 @@ public sealed class LocationTransferService(TransactionRunner runner, NodeIdenti
         {
             // The same id was saved concurrently; the other request won and this one rolled back.
             var winner = await TryLoadAsync(request.Id, ct);
-            if (winner is null)
-                throw;
-            return new LocationTransferResult(winner, Replayed: true);
+            if (winner is not null)
+                return new LocationTransferResult(winner, Replayed: true);
+            if (request.ReversesId is not null)
+                throw AlreadyReversed();                // another reversal of the same transfer won (unique reverses_id)
+            throw;
         }
+    }
+
+    public const string DamagedLocationType = "DAMAGED";
+
+    private static ApiException AlreadyReversed() =>
+        ApiException.Conflict("already_reversed", "This transfer has already been reversed.");
+
+    /// <summary>A reversal goes the opposite way of its original, at this node, once.</summary>
+    private static async Task CheckReversalAsync(
+        MySqlConnection c, MySqlTransaction tx, NodeInfo node, CreateLocationTransferRequest request, CancellationToken ct)
+    {
+        var original = await c.QuerySingleOrDefaultAsync<(Guid NodeId, Guid From, Guid To, Guid? ReversedBy)>(new CommandDefinition(
+            """
+            SELECT t.node_id, t.from_location_id, t.to_location_id, r.id
+            FROM location_transfers t LEFT JOIN location_transfers r ON r.reverses_id = t.id
+            WHERE t.id = @ReversesId
+            """, new { request.ReversesId }, tx, cancellationToken: ct));
+        if (original.NodeId != node.Id)
+            throw ApiException.Unprocessable("unknown_transfer", $"Transfer {request.ReversesId} does not exist at node {node.Code}.");
+        if (original.ReversedBy is not null)
+            throw AlreadyReversed();
+        if (request.FromLocationId != original.To || request.ToLocationId != original.From)
+            throw ApiException.Unprocessable("reversal_direction", "A reversal must go from the original destination back to its source.");
     }
 
     private async Task<LocationTransferDto> CreateWithinAsync(
         MySqlConnection c, MySqlTransaction tx, NodeInfo node, CreateLocationTransferRequest request, Guid userId, CancellationToken ct)
     {
         await EnsureLocationAsync(c, tx, node, request.FromLocationId, "from_location_id", ct);
-        await EnsureLocationAsync(c, tx, node, request.ToLocationId, "to_location_id", ct);
+        var toType = await EnsureLocationAsync(c, tx, node, request.ToLocationId, "to_location_id", ct);
+        if (request.ReversesId is not null)
+            await CheckReversalAsync(c, tx, node, request, ct);
         var units = await ResolveLinesAsync(c, tx, request.Lines!, ct);
         var now = clock.GetUtcNow().UtcDateTime;
 
+        // Owner decision: towards a DAMAGED location expired stock goes too, expired first (earliest expiry), then FEFO.
         var requests = units.Select(u => new StockTransferRequest(node.Id, u.ProductId, request.FromLocationId, request.ToLocationId,
             u.BaseQty, request.Id, null, now)).ToList();
-        var moved = await StockPostingService.TransferWithinAsync(c, tx, requests, ct);
+        var moved = await StockPostingService.TransferWithinAsync(c, tx, requests, toType == DamagedLocationType, ct);
 
         var number = await DocumentNumbering.NextAsync(c, tx, node, DocumentTypes.LocationTransfer, now, ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            INSERT INTO location_transfers (id, node_id, number, from_location_id, to_location_id, transferred_at, notes, created_by)
-            VALUES (@Id, @nodeId, @number, @FromLocationId, @ToLocationId, @now, @notes, @userId)
+            INSERT INTO location_transfers (id, node_id, number, from_location_id, to_location_id, transferred_at, notes, reverses_id, created_by)
+            VALUES (@Id, @nodeId, @number, @FromLocationId, @ToLocationId, @now, @notes, @ReversesId, @userId)
             """,
             new
             {
-                request.Id, nodeId = node.Id, number, request.FromLocationId, request.ToLocationId, now,
+                request.Id, nodeId = node.Id, number, request.FromLocationId, request.ToLocationId, now, request.ReversesId,
                 notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(), userId,
             }, tx, cancellationToken: ct));
 
@@ -149,6 +187,8 @@ public sealed class LocationTransferService(TransactionRunner runner, NodeIdenti
         var today = BranchClock.Today(clock.GetUtcNow().UtcDateTime, node.TimeZone);
         await using var c = await runner.ConnectionFactory.OpenAsync(ct);
         await EnsureLocationAsync(c, null, node, request.FromLocationId, "from_location_id", ct);
+        var allowExpired = request.ToLocationId is { } to
+            && await EnsureLocationAsync(c, null, node, to, "to_location_id", ct) == DamagedLocationType;
         if (request.Lines is not { Count: > 0 })
             return new LocationTransferPreviewDto(today, []);
         if (request.Lines.Any(l => l.Qty <= 0))
@@ -169,8 +209,9 @@ public sealed class LocationTransferService(TransactionRunner runner, NodeIdenti
             var u = units[i];
             var productBuckets = StockBalances.BucketsFor(balances, request.FromLocationId, u.ProductId);
             var stock = productBuckets.Sum(b => b.BaseQty);
-            var available = productBuckets.Where(b => b.BaseQty > 0 && (b.ExpiryDate is null || b.ExpiryDate >= today)).Sum(b => b.BaseQty);
-            var allocations = StockAllocator.AllocateOutbound(productBuckets, u.BaseQty, u.TrackExpiry, today);
+            var available = productBuckets
+                .Where(b => b.BaseQty > 0 && (allowExpired || b.ExpiryDate is null || b.ExpiryDate >= today)).Sum(b => b.BaseQty);
+            var allocations = StockAllocator.AllocateOutbound(productBuckets, u.BaseQty, u.TrackExpiry, today, allowExpired);
             lines.Add(new LocationTransferPreviewLineDto(i + 1, u.ProductId, u.ProductUnitId, u.Qty, u.BaseQty, u.BaseUnitCode,
                 stock, available, Math.Max(0m, u.BaseQty - available),
                 allocations.Select(a => new ExpiryQtyDto(a.ExpiryDate, a.BaseQty)).ToList()));
@@ -222,13 +263,16 @@ public sealed class LocationTransferService(TransactionRunner runner, NodeIdenti
             """
             SELECT t.id AS Id, t.node_id AS NodeId, t.number AS Number, t.from_location_id AS FromLocationId, lf.code AS FromLocationCode,
                    t.to_location_id AS ToLocationId, lt.code AS ToLocationCode, t.transferred_at AS TransferredAt, b.timezone AS TimeZone,
-                   t.notes AS Notes, t.created_by AS CreatedBy, u.full_name AS CreatedByName
+                   t.notes AS Notes, t.created_by AS CreatedBy, u.full_name AS CreatedByName,
+                   t.reverses_id AS ReversesId, rv.number AS ReversesNumber, rb.id AS ReversedById, rb.number AS ReversedByNumber
             FROM location_transfers t
             JOIN locations lf ON lf.id = t.from_location_id
             JOIN locations lt ON lt.id = t.to_location_id
             JOIN nodes n ON n.id = t.node_id
             JOIN branches b ON b.id = n.branch_id
             JOIN users u ON u.id = t.created_by
+            LEFT JOIN location_transfers rv ON rv.id = t.reverses_id
+            LEFT JOIN location_transfers rb ON rb.reverses_id = t.id
             WHERE t.id = @id
             """, new { id }, tx, cancellationToken: ct));
         if (h is null)
@@ -257,17 +301,18 @@ public sealed class LocationTransferService(TransactionRunner runner, NodeIdenti
         }).ToList();
 
         return new LocationTransferDto(h.Id, h.NodeId, h.Number, h.FromLocationId, h.FromLocationCode, h.ToLocationId, h.ToLocationCode,
-            DateTime.SpecifyKind(h.TransferredAt, DateTimeKind.Utc), h.TimeZone, h.Notes, h.CreatedBy, h.CreatedByName, lines);
+            DateTime.SpecifyKind(h.TransferredAt, DateTimeKind.Utc), h.TimeZone, h.Notes, h.CreatedBy, h.CreatedByName, lines,
+            h.ReversesId, h.ReversesNumber, h.ReversedById, h.ReversedByNumber);
     }
 
-    private static async Task EnsureLocationAsync(
+    /// <returns>The location type (DISPLAY, STORAGE, DAMAGED, ...).</returns>
+    private static async Task<string> EnsureLocationAsync(
         MySqlConnection c, MySqlTransaction? tx, NodeInfo node, Guid locationId, string field, CancellationToken ct)
     {
-        var exists = await c.ExecuteScalarAsync<int>(new CommandDefinition(
-            "SELECT COUNT(*) FROM locations WHERE id = @locationId AND node_id = @nodeId AND deleted_at IS NULL",
-            new { locationId, nodeId = node.Id }, tx, cancellationToken: ct)) > 0;
-        if (!exists)
-            throw ApiException.Unprocessable("unknown_location", $"{field}: location {locationId} is not a location of node {node.Code}.");
+        var type = await c.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            "SELECT type FROM locations WHERE id = @locationId AND node_id = @nodeId AND deleted_at IS NULL",
+            new { locationId, nodeId = node.Id }, tx, cancellationToken: ct));
+        return type ?? throw ApiException.Unprocessable("unknown_location", $"{field}: location {locationId} is not a location of node {node.Code}.");
     }
 
     /// <summary>Entered lines → product, base quantity (unit conversion, whole numbers for whole units).</summary>
@@ -308,7 +353,8 @@ public sealed class LocationTransferService(TransactionRunner runner, NodeIdenti
 
     private sealed record HeaderRow(
         Guid Id, Guid NodeId, string Number, Guid FromLocationId, string FromLocationCode, Guid ToLocationId, string ToLocationCode,
-        DateTime TransferredAt, string TimeZone, string? Notes, Guid CreatedBy, string CreatedByName);
+        DateTime TransferredAt, string TimeZone, string? Notes, Guid CreatedBy, string CreatedByName,
+        Guid? ReversesId, string? ReversesNumber, Guid? ReversedById, string? ReversedByNumber);
 
     private sealed record LineRow(
         short LineNo, Guid ProductId, string Sku, string Name, Guid? ProductUnitId, string UnitCode, decimal? Qty, string BaseUnitCode,

@@ -59,6 +59,18 @@ public sealed partial class LoginViewModel(INodeApi api, SessionState session, I
             {
                 navigator.ShowOpenShift();
             }
+            else if (shift.CashierId != login.User.Id && session.Has(Pos.Shared.Auth.Permissions.ShiftShare))
+            {
+                // shift.share: sells on the shift that is open on this PC
+                session.Shift = shift;
+                navigator.ShowMain();
+            }
+            else if (shift.CashierId != login.User.Id && CanWorkWithoutSelling())
+            {
+                // Owner decision: admins are not refused; selling is locked, stock screens and closing shifts work.
+                session.ForeignShift = shift;
+                navigator.ShowMain();
+            }
             else if (shift.CashierId != login.User.Id)
             {
                 session.Clear();
@@ -83,4 +95,9 @@ public sealed partial class LoginViewModel(INodeApi api, SessionState session, I
             IsBusy = false;
         }
     }
+
+    /// <summary>Users who have work besides selling: stock screens or transfers.</summary>
+    private bool CanWorkWithoutSelling() =>
+        session.Has(Pos.Shared.Auth.Permissions.StockView)
+        || session.Has(Pos.Shared.Auth.Permissions.StockTransfer);
 }

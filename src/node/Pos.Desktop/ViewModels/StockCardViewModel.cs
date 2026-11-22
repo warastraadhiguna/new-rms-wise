@@ -74,6 +74,11 @@ public sealed partial class StockCardViewModel : FormTab
 
     public Guid? ProductId { get; private set; }
 
+    /// <summary>The user may create transfers: a transfer's detail offers "Buat Mutasi Balik".</summary>
+    public bool CanReverse { get; set; }
+
+    public event EventHandler<LocationTransfer>? ReverseTransferRequested;
+
     [ObservableProperty] private string _productText = "Pilih barang dengan Barang [F1].";
     [ObservableProperty] private LocationOption _selectedLocation;
     [ObservableProperty] private DateTime? _fromDate;
@@ -218,8 +223,8 @@ public sealed partial class StockCardViewModel : FormTab
             try
             {
                 var transfer = await _api.GetLocationTransferAsync(docId);
-                _dialogs.ShowDocumentDetail($"Mutasi Lokasi {transfer.Number}", "Dokumen sumber: mutasi lokasi.",
-                    TransferDetailText.Lines(transfer));
+                if (ReversalDetail.Show(_dialogs, transfer, CanReverse))
+                    ReverseTransferRequested?.Invoke(this, transfer);
             }
             catch (NodeApiException ex)
             {

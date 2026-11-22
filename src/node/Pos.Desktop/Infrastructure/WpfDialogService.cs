@@ -104,8 +104,13 @@ public sealed class WpfDialogService(INodeApi api) : IDialogService
         return (owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner)) == true ? dialog.FileName : null;
     }
 
-    public void ShowDocumentDetail(string title, string message, IReadOnlyList<string> lines) =>
-        Show(new ReceiptPreviewDialog(), new ReceiptPreviewViewModel(message, lines, title));
+    public bool ShowDocumentDetail(string title, string message, IReadOnlyList<string> lines, string? actionText = null)
+    {
+        var vm = new ReceiptPreviewViewModel(message, lines, title, actionText);
+        Show(new ReceiptPreviewDialog(), vm);
+        return vm.ActionChosen;
+    }
+
 
     public void ShowReceiptPreview(string message, IReadOnlyList<string> lines) =>
         Show(new ReceiptPreviewDialog(), new ReceiptPreviewViewModel(message, lines));

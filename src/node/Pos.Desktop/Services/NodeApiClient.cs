@@ -89,9 +89,9 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
         SendAsync<LocationTransfer>(HttpMethod.Post, "api/v1/stock/transfers", request, authenticated: true, withDevice: false, ct);
 
     public Task<LocationTransferPreview> PreviewLocationTransferAsync(
-        Guid fromLocationId, IReadOnlyList<LocationTransferLineRequest> lines, CancellationToken ct = default) =>
+        Guid fromLocationId, IReadOnlyList<LocationTransferLineRequest> lines, CancellationToken ct = default, Guid? toLocationId = null) =>
         SendAsync<LocationTransferPreview>(HttpMethod.Post, "api/v1/stock/transfers/preview",
-            new { FromLocationId = fromLocationId, Lines = lines }, authenticated: true, withDevice: false, ct);
+            new { FromLocationId = fromLocationId, ToLocationId = toLocationId, Lines = lines }, authenticated: true, withDevice: false, ct);
 
     public async Task<IReadOnlyList<LocationTransferSummary>> GetLocationTransfersAsync(DateOnly from, DateOnly to, CancellationToken ct = default) =>
         await SendAsync<List<LocationTransferSummary>>(HttpMethod.Get,

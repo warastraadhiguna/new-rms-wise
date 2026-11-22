@@ -97,6 +97,40 @@ public class LoginViewModelTests
     }
 
     [Fact]
+    public async Task Admin_is_let_in_with_the_foreign_shift_and_selling_locked()
+    {
+        _api.OnLogin = (_, _) => Samples.LoginWith("stock.view", "stock.transfer", "sale.create");
+        _api.OnCurrentShift = () => Samples.Shift(cashierId: Samples.OtherUserId) with { CashierName = "Kasir Satu" };
+        var vm = Vm();
+        vm.Username = "admintoko";
+        vm.Password = "admintoko123";
+
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal(["main"], _navigator.Shown);
+        Assert.Null(_session.Shift);
+        Assert.Equal("Kasir Satu", _session.ForeignShift?.CashierName);
+        Assert.Null(vm.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Shift_share_sells_on_the_open_shift_of_another_cashier()
+    {
+        _api.OnLogin = (_, _) => Samples.LoginWith("shift.share", "sale.create");
+        var shift = Samples.Shift(cashierId: Samples.OtherUserId);
+        _api.OnCurrentShift = () => shift;
+        var vm = Vm();
+        vm.Username = "kasir2";
+        vm.Password = "x";
+
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal(["main"], _navigator.Shown);
+        Assert.Equal(shift, _session.Shift);
+        Assert.Null(_session.ForeignShift);
+    }
+
+    [Fact]
     public async Task Api_error_is_shown_and_the_form_is_usable_again()
     {
         _api.OnLogin = (_, _) => throw new NodeApiException("Username atau password salah.", "invalid_credentials", 401);

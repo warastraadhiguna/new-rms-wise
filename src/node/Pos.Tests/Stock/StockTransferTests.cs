@@ -275,4 +275,15 @@ public class StockTransferTests
 
         Assert.Equal([(Day("2027-01-01"), 3m)], lines.Select(l => (l.ExpiryDate, l.BaseQty)));
     }
+
+    [Fact]
+    public void By_expiry_to_a_damaged_location_takes_expired_stock_first_then_fefo()
+    {
+        var balances = Balances([(From, "2027-01-01", "3"), (From, "2026-11-01", "4"), (From, "2026-10-15", "1")]);
+
+        var lines = StockTransfer.TransferByExpiry(Request("6"), balances, Today, trackExpiry: true, allowExpired: true);
+
+        Assert.Equal([(Day("2026-10-15"), 1m), (Day("2026-11-01"), 4m), (Day("2027-01-01"), 1m)],
+            lines.Select(l => (l.ExpiryDate, l.BaseQty)));
+    }
 }

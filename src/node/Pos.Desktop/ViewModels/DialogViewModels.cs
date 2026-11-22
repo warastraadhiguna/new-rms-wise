@@ -156,7 +156,8 @@ public sealed partial class PickerDialogViewModel : DialogViewModel
 }
 
 /// <summary>Receipt shown on screen when no printer is set or printing failed (monospace, same width as on paper).</summary>
-public sealed partial class ReceiptPreviewViewModel(string message, IReadOnlyList<string> lines, string title = "Pratinjau Struk") : DialogViewModel
+public sealed partial class ReceiptPreviewViewModel(
+    string message, IReadOnlyList<string> lines, string title = "Pratinjau Struk", string? actionText = null) : DialogViewModel
 {
     public string Title { get; } = title;
 
@@ -166,6 +167,20 @@ public sealed partial class ReceiptPreviewViewModel(string message, IReadOnlyLis
 
     /// <summary>Characters per line, so the box is exactly as wide as the paper.</summary>
     public int Columns { get; } = lines.Count == 0 ? 0 : lines.Max(l => l.Length);
+
+    /// <summary>Optional extra button (e.g. "Buat Mutasi Balik").</summary>
+    public string? ActionText { get; } = actionText;
+
+    public bool HasAction => ActionText is not null;
+
+    public bool ActionChosen { get; private set; }
+
+    [RelayCommand]
+    private void Action()
+    {
+        ActionChosen = true;
+        DialogResult = true;
+    }
 
     [RelayCommand]
     private void Close() => DialogResult = true;

@@ -7,6 +7,9 @@
         FontFamily="Tahoma" FontSize="13"
         infra:DialogCloser.DialogResult="{Binding DialogResult}"
         FocusManager.FocusedElement="{Binding ElementName=CloseButton}">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </Window.Resources>
     <Window.InputBindings>
         <KeyBinding Key="Enter" Command="{Binding CloseCommand}" />
         <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
@@ -14,8 +17,12 @@
     <DockPanel Margin="14">
         <TextBlock x:Name="MessageText" DockPanel.Dock="Top" Text="{Binding Message}" Foreground="Firebrick"
                    TextWrapping="Wrap" MaxWidth="420" Margin="0,0,0,10" />
-        <Button x:Name="CloseButton" DockPanel.Dock="Bottom" Content="Tutup [Enter]" Command="{Binding CloseCommand}"
-                HorizontalAlignment="Right" Padding="16,4" Margin="0,10,0,0" />
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="ActionButton" Content="{Binding ActionText}" Command="{Binding ActionCommand}" Padding="16,4" Margin="0,0,8,0"
+                    Visibility="{Binding HasAction, Converter={StaticResource BoolToVisibility}}" />
+            <Button x:Name="CloseButton" Content="Tutup [Enter]" Command="{Binding CloseCommand}"
+                    Padding="16,4" />
+        </StackPanel>
         <!-- Monospace and no wrapping: the dashed rules are exactly the paper width. -->
         <TextBox x:Name="ReceiptBox" Text="{Binding ReceiptText, Mode=OneWay}" IsReadOnly="True"
                  FontFamily="Consolas, Courier New" FontSize="13" TextWrapping="NoWrap" Padding="8"
