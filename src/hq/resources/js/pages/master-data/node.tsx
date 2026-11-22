@@ -1,8 +1,8 @@
-import { Head, useForm } from '@inertiajs/react';
-import { Pencil, Plus } from 'lucide-react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { KeyRound, Pencil, Plus } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useState } from 'react';
-import { Field, PageHeader } from '@/components/master-data';
+import { ConfirmDelete, Field, PageHeader } from '@/components/master-data';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -46,6 +46,14 @@ type Props = {
     locations: Location[];
     types: Record<string, string>;
     locationTypes: Record<string, string>;
+    syncToken: SyncToken | null;
+};
+
+type SyncToken = {
+    id: number;
+    token_hint: string;
+    created_at: string;
+    last_used_at: string | null;
 };
 
 const LIST = '/master-data/nodes';
@@ -186,11 +194,98 @@ function LocationDialog({
     );
 }
 
+/** Sync token: created here, shown once (flash), revocable. */
+function SyncTokenPanel({
+    nodeId,
+    token,
+}: {
+    nodeId: string;
+    token: SyncToken | null;
+}) {
+    const page = usePage();
+    const plain = (page.flash as { sync_token?: string } | undefined)
+        ?.sync_token;
+    const [confirmRevoke, setConfirmRevoke] = useState(false);
+    const url = `${LIST}/${nodeId}/sync-token`;
+
+    return (
+        <div className="grid gap-2 rounded-md border p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <span className="font-medium">Token sinkron: </span>
+                    {token ? (
+                        <span data-test="token-status">
+                            aktif ({token.token_hint}), dibuat{' '}
+                            {token.created_at.slice(0, 16)} UTC
+                            {token.last_used_at
+                                ? `, terakhir dipakai ${token.last_used_at.slice(0, 16)} UTC`
+                                : ', belum pernah dipakai'}
+                        </span>
+                    ) : (
+                        <span
+                            className="text-muted-foreground"
+                            data-test="token-status"
+                        >
+                            belum ada — node ini belum bisa sinkron
+                        </span>
+                    )}
+                </div>
+                <div className="flex gap-2">
+                    <Button
+                        size="sm"
+                        variant={token ? 'outline' : 'default'}
+                        onClick={() =>
+                            router.post(url, {}, { preserveScroll: true })
+                        }
+                        data-test="create-token"
+                    >
+                        <KeyRound className="size-4" /> Buat token sinkron
+                    </Button>
+                    {token && (
+                        <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setConfirmRevoke(true)}
+                        >
+                            Cabut
+                        </Button>
+                    )}
+                </div>
+            </div>
+            {plain && (
+                <div className="grid gap-1 rounded-md bg-amber-50 p-2 text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                    <span>
+                        Salin token ini ke konfigurasi Node Service sekarang.
+                        Token tidak akan ditampilkan lagi; token lama sudah
+                        tidak berlaku.
+                    </span>
+                    <code
+                        className="font-mono text-sm break-all select-all"
+                        data-test="sync-token"
+                    >
+                        {plain}
+                    </code>
+                </div>
+            )}
+            {confirmRevoke && (
+                <ConfirmDelete
+                    open
+                    onOpenChange={(o) => !o && setConfirmRevoke(false)}
+                    title="Cabut token sinkron?"
+                    message="Node ini tidak bisa sinkron lagi sampai diberi token baru."
+                    url={url}
+                />
+            )}
+        </div>
+    );
+}
+
 export default function NodePage({
     node,
     locations,
     types,
     locationTypes,
+    syncToken,
 }: Props) {
     const base = `${LIST}/${node.id}`;
     const [editing, setEditing] = useState<{
@@ -219,6 +314,9 @@ export default function NodePage({
                         </Button>
                     }
                 />
+                {node.type !== 'HQ' && (
+                    <SyncTokenPanel nodeId={node.id} token={syncToken} />
+                )}
                 <Table>
                     <TableHeader>
                         <TableRow>

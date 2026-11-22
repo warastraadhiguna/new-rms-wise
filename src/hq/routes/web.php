@@ -79,6 +79,8 @@ Route::middleware(['auth', 'hq'])->group(function () {
             Route::put('nodes/{id}', [NodeController::class, 'update']);
             Route::post('nodes/{id}/locations', [NodeController::class, 'storeLocation']);
             Route::put('nodes/{id}/locations/{location}', [NodeController::class, 'updateLocation']);
+            Route::post('nodes/{id}/sync-token', [NodeController::class, 'createToken']);
+            Route::delete('nodes/{id}/sync-token', [NodeController::class, 'revokeToken']);
         });
     });
 

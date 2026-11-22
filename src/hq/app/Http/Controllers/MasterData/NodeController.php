@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MasterData;
 
 use App\Http\Controllers\Controller;
 use App\Support\MasterData\MasterDataWriter;
+use App\Sync\NodeTokens;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -64,7 +65,30 @@ class NodeController extends Controller
                 ->get(['id', 'code', 'name', 'type', 'is_sellable', 'is_active', 'version']),
             'types' => self::TYPES,
             'locationTypes' => self::LOCATION_TYPES,
+            'syncToken' => app(NodeTokens::class)->active($id),
         ]);
+    }
+
+    /** "Buat token sinkron": a new token for the node (the previous one stops working), shown once. */
+    public function createToken(Request $request, string $id, NodeTokens $tokens): RedirectResponse
+    {
+        $type = DB::table('nodes')->where('id', $id)->whereNull('deleted_at')->value('type');
+        abort_unless(is_string($type), 404);
+        if ($type === 'HQ') {
+            throw ValidationException::withMessages(['token' => 'Node pusat tidak memakai token sinkron.']);
+        }
+        $token = $tokens->create($id, (string) $request->user()?->getAuthIdentifier());
+        Inertia::flash('sync_token', $token);
+
+        return $this->saved('Token sinkron dibuat. Salin sekarang: token tidak ditampilkan lagi.');
+    }
+
+    public function revokeToken(Request $request, string $id, NodeTokens $tokens): RedirectResponse
+    {
+        abort_unless(DB::table('nodes')->where('id', $id)->whereNull('deleted_at')->exists(), 404);
+        $tokens->revoke($id, (string) $request->user()?->getAuthIdentifier());
+
+        return $this->saved('Token sinkron dicabut. Node ini tidak bisa sinkron sampai diberi token baru.');
     }
 
     public function store(Request $request, MasterDataWriter $writer): RedirectResponse
