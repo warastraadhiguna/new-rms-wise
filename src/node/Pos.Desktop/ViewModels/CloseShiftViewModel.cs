@@ -60,7 +60,7 @@ public sealed partial class CloseShiftViewModel : DialogViewModel
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CashierName), nameof(OpenedText), nameof(IsClosed), nameof(CanEdit), nameof(HasFigures),
         nameof(IsBlindHint), nameof(OpeningText), nameof(CashSalesText), nameof(DownPaymentText), nameof(ReceivableText),
-        nameof(ExpensesText), nameof(ExpectedText), nameof(CountedCashText), nameof(DifferenceLabel), nameof(DifferenceText),
+        nameof(ExpensesText), nameof(RefundsText), nameof(ExpectedText), nameof(CountedCashText), nameof(DifferenceLabel), nameof(DifferenceText),
         nameof(DifferenceKind), nameof(SaleCountText), nameof(CancellationCountText))]
     private ShiftSummary? _summary;
 
@@ -84,6 +84,7 @@ public sealed partial class CloseShiftViewModel : DialogViewModel
     public string DownPaymentText => Money(Summary?.CreditDownPayments);
     public string ReceivableText => Money(Summary?.ReceivableCash);
     public string ExpensesText => Summary?.CashExpenses is { } e and not 0 ? Money(-e) : Money(Summary?.CashExpenses);
+    public string RefundsText => !HasFigures ? "" : Summary?.CashRefunds is { } r and not 0 ? Money(-r) : "0";
     public string ExpectedText => Money(Summary?.ExpectedCash);
     public string CountedCashText => Money(Summary?.CountedCash);
     public string SaleCountText => Summary?.SaleCount?.ToString(Indonesian) ?? "";

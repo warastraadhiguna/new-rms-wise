@@ -62,6 +62,7 @@ builder.Services.AddSingleton<SalesConfigService>();
 builder.Services.AddSingleton<SaleDetailService>();
 builder.Services.AddSingleton<SalesListService>();
 builder.Services.AddSingleton<SaleVoidService>();
+builder.Services.AddSingleton<SaleReturnService>();
 builder.Services.AddSingleton<Pos.NodeService.Customers.CustomerSearchService>();
 builder.Services.AddSingleton<DevSeeder>(sp => new DevSeeder(
     sp.GetRequiredService<TransactionRunner>(), sp.GetRequiredService<TimeProvider>(),

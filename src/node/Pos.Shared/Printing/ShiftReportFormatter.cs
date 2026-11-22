@@ -61,6 +61,7 @@ public static class ShiftReportFormatter
         lines.AddRange(Row("Uang Muka Kredit", t.CreditDownPayments, width));
         lines.AddRange(Row("Pelunasan Piutang Tunai", t.ReceivableCash, width));
         lines.AddRange(Row("Pengeluaran Kas", t.CashExpenses == 0 ? 0m : -t.CashExpenses, width));
+        lines.AddRange(Row("Retur Tunai", t.CashRefunds == 0 ? 0m : -t.CashRefunds, width));
         lines.Add(rule);
         lines.AddRange(Row("Kas Seharusnya", data.ExpectedCash, width));
         lines.AddRange(Row("Kas Fisik", data.CountedCash, width));

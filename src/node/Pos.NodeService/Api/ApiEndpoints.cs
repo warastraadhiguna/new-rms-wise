@@ -91,6 +91,31 @@ public static class ApiEndpoints
         api.MapGet("/reasons", (string type, SaleVoidService service, CancellationToken ct) => service.ReasonsAsync(type, ct))
             .RequireAuthorization(Policies.SalesRead);
 
+        // Retur penjualan (10c): the nota to return (by id or number), create (device header: a refund needs its open shift),
+        // Data Retur Penjualan and the detail.
+        var returns = api.MapGroup("/returns");
+        returns.MapGet("/source", ([FromQuery(Name = "sale_id")] Guid? saleId, string? number, SaleReturnService service, CancellationToken ct) =>
+                service.GetSourceAsync(saleId, number, ct))
+            .RequireAuthorization(Policies.SalesRead);
+        returns.MapPost("", async (CreateSaleReturnRequest request, SaleReturnService service, HttpContext http, ClaimsPrincipal user,
+                CancellationToken ct) =>
+            {
+                var result = await service.CreateAsync(request, DeviceFilter.DeviceId(http), user.UserId(),
+                    user.HasPermission(Permissions.SaleReturnLate), ct);
+                return result.Replayed ? Results.Ok(result.Return) : Results.Created($"/api/v1/returns/{result.Return.Id}", result.Return);
+            })
+            .AddEndpointFilter<DeviceFilter>()
+            .RequireAuthorization(Permissions.SaleCreate);
+        returns.MapGet("", async (DateOnly? from, DateOnly? to, SaleReturnService service, NodeIdentity nodeIdentity, TimeProvider clock,
+                CancellationToken ct) =>
+            {
+                var today = BranchClock.Today(clock.GetUtcNow().UtcDateTime, (await nodeIdentity.GetAsync(ct)).TimeZone);
+                return await service.ListAsync(from ?? today, to ?? today, ct);
+            })
+            .RequireAuthorization(Policies.SalesRead);
+        returns.MapGet("/{returnId:guid}", (Guid returnId, SaleReturnService service, CancellationToken ct) => service.GetAsync(returnId, ct))
+            .RequireAuthorization(Policies.SalesRead);
+
         // Receipt data of a stored sale (print after payment, F5 reprint): names, cashier, branch timezone, receipt texts.
         api.MapGet("/sales/{saleId:guid}", (Guid saleId, SaleDetailService service, CancellationToken ct) => service.GetAsync(saleId, ct))
             .RequireAuthorization(Policies.SalesRead);

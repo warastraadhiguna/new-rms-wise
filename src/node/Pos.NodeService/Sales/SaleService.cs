@@ -104,6 +104,7 @@ public sealed class SaleService(
 
         var settings = await SaleSettings.LoadAsync(c, tx, node.BranchId, ct);
         var methods = await ResolvePaymentMethodsAsync(c, tx, payments, ct);
+        var exchangeReturnId = await ResolveExchangeAsync(c, tx, node, request, methods, payments, ct);
         var locationId = await ResolveLocationAsync(c, tx, node, request.LocationId, ct);
         var soldAt = clock.GetUtcNow().UtcDateTime;
 
@@ -181,13 +182,14 @@ public sealed class SaleService(
         {
             await c.ExecuteAsync(new CommandDefinition(
                 """
-                INSERT INTO sale_payments (id, sale_id, payment_method_id, amount, tendered, change_given, reference)
-                VALUES (@Id, @saleId, @MethodId, @Applied, @Tendered, @ChangeGiven, @Reference)
+                INSERT INTO sale_payments (id, sale_id, payment_method_id, amount, tendered, change_given, reference, sale_return_id)
+                VALUES (@Id, @saleId, @MethodId, @Applied, @Tendered, @ChangeGiven, @Reference, @ReturnId)
                 """,
                 payments.Select((p, i) => new
                 {
                     Id = Guid.CreateVersion7(), saleId, MethodId = methods[i].Id, totals.Payments[i].Applied,
                     totals.Payments[i].Tendered, totals.Payments[i].ChangeGiven, p.Reference,
+                    ReturnId = methods[i].Code == ExchangeMethod ? exchangeReturnId : null,
                 }).ToList(), tx, cancellationToken: ct));
         }
         await Step(SaleSteps.SaleInserted, ct);
@@ -305,6 +307,43 @@ public sealed class SaleService(
         }
 
         return new ResolvedLine(unit.ProductId, productUnitId, line.Qty, unit.Conversion, baseQty, price, amounts);
+    }
+
+    /// <summary>Payment method of TUKAR BARANG: the value of an EXCHANGE return pays (part of) this sale.</summary>
+    public const string ExchangeMethod = "RETURN";
+
+    /// <summary>
+    /// TUKAR BARANG: a RETURN payment needs <c>ExchangeReturnId</c> (and the other way round); the return must be this
+    /// node's, settled EXCHANGE, not used yet, and the payment must be its whole value. The row lock makes one use only.
+    /// A new sale smaller than the return value is refused by the calculator (non_cash_overpayment).
+    /// </summary>
+    private static async Task<Guid?> ResolveExchangeAsync(
+        MySqlConnection c, MySqlTransaction tx, NodeInfo node, CreateSaleRequest request, IReadOnlyList<MethodRow> methods,
+        IReadOnlyList<SalePaymentRequest> payments, CancellationToken ct)
+    {
+        var exchangePayments = methods.Select((m, i) => (m, i)).Where(x => x.m.Code == ExchangeMethod).Select(x => payments[x.i]).ToList();
+        if (exchangePayments.Count == 0)
+            return request.ExchangeReturnId is null
+                ? null
+                : throw ApiException.Unprocessable("exchange_payment_required", "Tukar barang needs a RETURN payment of the return's value.");
+        if (exchangePayments.Count > 1)
+            throw ApiException.Unprocessable("multiple_return_payments", "Use one RETURN payment per sale.");
+        if (request.ExchangeReturnId is not { } returnId)
+            throw ApiException.Unprocessable("exchange_return_required", "A RETURN payment needs the return (ExchangeReturnId).");
+
+        var ret = await c.QuerySingleOrDefaultAsync<(Guid NodeId, string Number, string Settlement, decimal Total)?>(new CommandDefinition(
+            "SELECT node_id, number, settlement, total FROM sale_returns WHERE id = @returnId FOR UPDATE",
+            new { returnId }, tx, cancellationToken: ct));
+        if (ret is not { } r || r.NodeId != node.Id)
+            throw ApiException.NotFound("unknown_return", $"Return {returnId} does not exist at node {node.Code}.");
+        if (r.Settlement != ReturnSettlements.Exchange)
+            throw ApiException.Unprocessable("not_an_exchange", $"Return {r.Number} is not settled as Tukar Barang.");
+        if (await c.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM sale_payments WHERE sale_return_id = @returnId", new { returnId }, tx, cancellationToken: ct)) > 0)
+            throw ApiException.Conflict("exchange_already_used", $"The value of return {r.Number} was already used.");
+        if (exchangePayments[0].Amount != r.Total)
+            throw ApiException.Unprocessable("exchange_amount_mismatch", $"The RETURN payment must be {r.Total}, the value of return {r.Number}.");
+        return returnId;
     }
 
     private static async Task<IReadOnlyList<MethodRow>> ResolvePaymentMethodsAsync(

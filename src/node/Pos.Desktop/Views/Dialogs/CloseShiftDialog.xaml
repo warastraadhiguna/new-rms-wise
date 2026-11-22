@@ -96,8 +96,10 @@
                     <TextBlock x:Name="ReceivableValue" Grid.Row="3" Grid.Column="1" Style="{StaticResource Value}" Text="{Binding ReceivableText}" />
                     <TextBlock Grid.Row="4" Style="{StaticResource Label}" Text="Pengeluaran Kas" />
                     <TextBlock x:Name="ExpensesValue" Grid.Row="4" Grid.Column="1" Style="{StaticResource Value}" Text="{Binding ExpensesText}" />
-                    <TextBlock Grid.Row="5" Style="{StaticResource Label}" Text="Kas Seharusnya" FontWeight="Bold" />
-                    <TextBlock x:Name="ExpectedValue" Grid.Row="5" Grid.Column="1" Style="{StaticResource Value}" Text="{Binding ExpectedText}" FontWeight="Bold" />
+                    <TextBlock Grid.Row="5" Style="{StaticResource Label}" Text="Retur Tunai" />
+                    <TextBlock x:Name="RefundsValue" Grid.Row="5" Grid.Column="1" Style="{StaticResource Value}" Text="{Binding RefundsText}" />
+                    <TextBlock Grid.Row="6" Style="{StaticResource Label}" Text="Kas Seharusnya" FontWeight="Bold" />
+                    <TextBlock x:Name="ExpectedValue" Grid.Row="6" Grid.Column="1" Style="{StaticResource Value}" Text="{Binding ExpectedText}" FontWeight="Bold" />
                 </Grid>
 
                 <!-- after closing: counted cash and the coloured difference -->

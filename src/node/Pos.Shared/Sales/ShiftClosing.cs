@@ -12,6 +12,7 @@ public sealed record ShiftMethodTotal(string Code, string Name, decimal Amount, 
 /// <param name="NonCash">Non-cash methods (shown, never in the drawer).</param>
 /// <param name="SaleCount">Notas (sales not voided).</param>
 /// <param name="CancellationCount">Cancelled carts ("Batal") and voided sales.</param>
+/// <param name="CashRefunds">Returns settled with cash from this drawer (UANG KEMBALI).</param>
 public sealed record ShiftTotals(
     decimal OpeningCash,
     decimal CashSales,
@@ -20,7 +21,8 @@ public sealed record ShiftTotals(
     decimal CashExpenses,
     IReadOnlyList<ShiftMethodTotal> NonCash,
     int SaleCount,
-    int CancellationCount);
+    int CancellationCount,
+    decimal CashRefunds = 0m);
 
 public enum ShiftDifferenceKind
 {
@@ -32,7 +34,7 @@ public enum ShiftDifferenceKind
 /// <summary>Shift close: the cash that should be in the drawer and the difference with what was counted.</summary>
 public static class ShiftClosing
 {
-    /// <summary>Modal awal + penjualan tunai + uang muka kredit + pelunasan piutang tunai − pengeluaran kas.</summary>
+    /// <summary>Modal awal + penjualan tunai + uang muka kredit + pelunasan piutang tunai − pengeluaran kas − retur tunai.</summary>
     public static decimal ExpectedCash(ShiftTotals totals)
     {
         ArgumentNullException.ThrowIfNull(totals);
@@ -41,10 +43,12 @@ public static class ShiftClosing
         NotNegative(totals.CreditDownPayments, nameof(totals.CreditDownPayments));
         NotNegative(totals.ReceivableCash, nameof(totals.ReceivableCash));
         NotNegative(totals.CashExpenses, nameof(totals.CashExpenses));
+        NotNegative(totals.CashRefunds, nameof(totals.CashRefunds));
         NotNegative(totals.SaleCount, nameof(totals.SaleCount));
         NotNegative(totals.CancellationCount, nameof(totals.CancellationCount));
 
-        return totals.OpeningCash + totals.CashSales + totals.CreditDownPayments + totals.ReceivableCash - totals.CashExpenses;
+        return totals.OpeningCash + totals.CashSales + totals.CreditDownPayments + totals.ReceivableCash
+               - totals.CashExpenses - totals.CashRefunds;
     }
 
     /// <summary>Positive = over (lebih), negative = short (kurang).</summary>

@@ -242,6 +242,8 @@
 
         <!-- Messages under the form -->
         <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Margin="0,6,0,0">
+            <TextBlock x:Name="ExchangeText" Text="{Binding ExchangeText}" Foreground="#1E5AA8" FontWeight="SemiBold" TextWrapping="Wrap"
+                       Visibility="{Binding ExchangeText, Converter={StaticResource VisibleWhenText}}" />
             <TextBlock x:Name="WarningText" Text="{Binding WarningMessage}" Foreground="#B35C00" TextWrapping="Wrap"
                        Visibility="{Binding WarningMessage, Converter={StaticResource VisibleWhenText}}" />
             <TextBlock x:Name="StatusText" Text="{Binding StatusMessage}" Foreground="Firebrick" TextWrapping="Wrap"

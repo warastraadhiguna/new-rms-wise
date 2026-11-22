@@ -1,0 +1,91 @@
+<UserControl x:Class="Pos.Desktop.Views.ReturnFormView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:infra="clr-namespace:Pos.Desktop.Infrastructure"
+             FontFamily="Tahoma" FontSize="13" Background="#EEF3FA"
+             infra:FocusBehavior.Request="{Binding FocusRequest}">
+    <!-- F8 Atur Jumlah, F7 Kondisi BAIK/RUSAK, F6 Simpan, Esc close. -->
+    <UserControl.InputBindings>
+        <KeyBinding Key="F8" Command="{Binding ChangeQtyCommand}" />
+        <KeyBinding Key="F7" Command="{Binding ToggleConditionCommand}" />
+        <KeyBinding Key="F6" Command="{Binding SaveCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
+    </UserControl.InputBindings>
+    <UserControl.Resources>
+        <infra:VisibleWhenTextConverter x:Key="VisibleWhenText" />
+        <Style x:Key="Right" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="Margin" Value="4,0,0,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel Margin="10">
+        <TextBlock DockPanel.Dock="Top" Text="Retur Penjualan" FontSize="24" FontWeight="Bold" Margin="0,4,0,12" />
+
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="80" />
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="80" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition /><RowDefinition />
+            </Grid.RowDefinitions>
+            <TextBlock Text="No Nota" />
+            <TextBlock x:Name="NotaText" Grid.Column="1" Text="{Binding NotaText}" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="2" Text="Member" />
+            <TextBlock x:Name="MemberText" Grid.Column="3" Text="{Binding MemberText}" />
+            <TextBlock Grid.Row="1" Text="Tanggal" />
+            <TextBlock x:Name="DateText" Grid.Row="1" Grid.Column="1" Text="{Binding DateText}" />
+            <TextBlock Grid.Row="1" Grid.Column="2" Text="Kasir" />
+            <TextBlock x:Name="CashierText" Grid.Row="1" Grid.Column="3" Text="{Binding CashierText}" />
+        </Grid>
+        <TextBlock x:Name="WindowText" DockPanel.Dock="Top" Text="{Binding WindowText}" Foreground="#B35C00" Margin="0,0,0,6"
+                   Visibility="{Binding WindowText, Converter={StaticResource VisibleWhenText}}" />
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="QtyButton" Content="Atur Jumlah [F8]" Command="{Binding ChangeQtyCommand}" />
+                <Button x:Name="ConditionButton" Content="Kondisi [F7]" Command="{Binding ToggleConditionCommand}" />
+                <Button x:Name="SaveButton" Content="Simpan [F6]" Command="{Binding SaveCommand}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Penyelesaian" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="SettlementBox" Width="170" ItemsSource="{Binding Settlements}" DisplayMemberPath="Label"
+                          SelectedItem="{Binding SelectedSettlement}" />
+                <TextBlock Text="Total Retur" VerticalAlignment="Center" Margin="24,0,8,0" />
+                <TextBlock x:Name="TotalText" Text="{Binding TotalText}" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" />
+            </StackPanel>
+        </DockPanel>
+        <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Foreground="Firebrick" TextWrapping="Wrap"
+                   Margin="0,6,0,0" Visibility="{Binding StatusMessage, Converter={StaticResource VisibleWhenText}}" />
+
+        <DataGrid x:Name="LinesGrid" ItemsSource="{Binding Lines}" SelectedItem="{Binding SelectedLine}" infra:FocusBehavior.Key="lines"
+                  AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionMode="Single" SelectionUnit="FullRow"
+                  RowHeight="22" RowHeaderWidth="14" GridLinesVisibility="All" Background="White"
+                  HorizontalGridLinesBrush="#D5DCE6" VerticalGridLinesBrush="#D5DCE6">
+            <DataGrid.InputBindings>
+                <KeyBinding Key="Enter" Command="{Binding ChangeQtyCommand}" />
+                <MouseBinding Gesture="LeftDoubleClick" Command="{Binding ChangeQtyCommand}" />
+            </DataGrid.InputBindings>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="No" Binding="{Binding No}" Width="40" />
+                <DataGridTextColumn Header="Kode Barang" Binding="{Binding Code}" Width="100" />
+                <DataGridTextColumn Header="Nama Barang" Binding="{Binding Name}" Width="*" />
+                <DataGridTextColumn Header="Satuan" Binding="{Binding UnitCode}" Width="60" />
+                <DataGridTextColumn Header="Terjual" Binding="{Binding SoldText}" Width="65" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Sudah Retur" Binding="{Binding ReturnedText}" Width="80" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Harga Retur" Binding="{Binding PriceText}" Width="90" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Qty Retur" Binding="{Binding QtyText}" Width="70" ElementStyle="{StaticResource Right}" />
+                <DataGridTextColumn Header="Kondisi" Binding="{Binding ConditionText}" Width="65" />
+                <DataGridTextColumn Header="Jumlah" Binding="{Binding AmountText}" Width="90" ElementStyle="{StaticResource Right}" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>

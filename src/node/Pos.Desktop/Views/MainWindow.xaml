@@ -26,6 +26,12 @@
         <DataTemplate DataType="{x:Type vm:LocationTransferViewModel}">
             <views:LocationTransferView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ReturnFormViewModel}">
+            <views:ReturnFormView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ReturnListViewModel}">
+            <views:ReturnListView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:SalesListViewModel}">
             <views:SalesListView />
         </DataTemplate>
@@ -43,6 +49,8 @@
                           Command="{Binding OpenSalesFormCommand}" IsEnabled="{Binding CanSell}"
                           Visibility="{Binding HasSalesMenu, Converter={StaticResource BoolToVisibility}}" />
                 <MenuItem x:Name="SalesListMenuItem" Header="Data Penjualan" Command="{Binding OpenSalesListCommand}"
+                          Visibility="{Binding CanViewSales, Converter={StaticResource BoolToVisibility}}" />
+                <MenuItem x:Name="ReturnListMenuItem" Header="Data Retur Penjualan" Command="{Binding OpenReturnListCommand}"
                           Visibility="{Binding CanViewSales, Converter={StaticResource BoolToVisibility}}" />
                 <MenuItem x:Name="SalesLockMenuItem" Header="{Binding SalesLockText}" IsEnabled="False" FontStyle="Italic"
                           Visibility="{Binding IsSalesLocked, Converter={StaticResource BoolToVisibility}}" />

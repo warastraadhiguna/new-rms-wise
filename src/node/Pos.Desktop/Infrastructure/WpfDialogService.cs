@@ -119,6 +119,12 @@ public sealed class WpfDialogService(INodeApi api) : IDialogService
         MessageBox.Show(Application.Current?.MainWindow!, message, "Informasi", MessageBoxButton.OK, MessageBoxImage.Information);
 
     /// <summary>True when the shift is closed, also when the window was closed with × after saving.</summary>
+    public string? AskText(string title, string prompt)
+    {
+        var vm = new InputDialogViewModel(title, prompt, "", text => text.Trim().Length == 0 ? "Isi terlebih dahulu." : null);
+        return Show(new InputDialog(), vm) ? vm.Text.Trim() : null;
+    }
+
     public ReasonChoice? AskReason(string title, string prompt, IReadOnlyList<ReasonItem> reasons)
     {
         var vm = new ReasonDialogViewModel(title, prompt, reasons);

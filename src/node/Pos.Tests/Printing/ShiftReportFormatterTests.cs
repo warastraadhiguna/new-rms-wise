@@ -18,7 +18,7 @@ public class ShiftReportFormatterTests
                 new ShiftMethodTotal("DEBIT", "DEBIT", 85000m, 2), new ShiftMethodTotal("QRIS", "QRIS", 0m, 0),
                 new ShiftMethodTotal("TRANSFER", "TRANSFER", 1250000m, 1), new ShiftMethodTotal("CREDIT", "KREDIT", 300000m, 1),
             ],
-            SaleCount: 14, CancellationCount: 2),
+            SaleCount: 14, CancellationCount: 2, CashRefunds: 0m),
         ExpectedCash: 400500m,
         CountedCash: counted);
 
@@ -47,6 +47,7 @@ public class ShiftReportFormatterTests
         Assert.Contains(Row("Uang Muka Kredit", "50.000"), lines);
         Assert.Contains(Row("Pelunasan Piutang Tunai", "25.000"), lines);
         Assert.Contains(Row("Pengeluaran Kas", "-12.000"), lines);
+        Assert.Contains(Row("Retur Tunai", "0"), lines);
         Assert.Contains(Row("Kas Seharusnya", "400.500"), lines);
         Assert.Contains(Row("Kas Fisik", "400.000"), lines);
         Assert.Contains(Row("Selisih (Kurang)", "-500"), lines);

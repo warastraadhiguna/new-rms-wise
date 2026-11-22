@@ -80,6 +80,22 @@ public sealed class NodeApiClient(HttpClient http, SessionState session, Desktop
     public Task<SaleVoidInfo> VoidSaleAsync(Guid saleId, VoidSaleRequest request, CancellationToken ct = default) =>
         SendAsync<SaleVoidInfo>(HttpMethod.Post, $"api/v1/sales/{saleId}/void", request, authenticated: true, withDevice: false, ct);
 
+    public Task<ReturnSource> GetReturnSourceAsync(Guid? saleId, string? number, CancellationToken ct = default) =>
+        SendAsync<ReturnSource>(HttpMethod.Get,
+            saleId is { } id ? $"api/v1/returns/source?sale_id={id}" : "api/v1/returns/source?number=" + Uri.EscapeDataString(number ?? ""),
+            null, authenticated: true, withDevice: false, ct);
+
+    /// <summary>With the device header: a cash refund comes out of this PC's open shift.</summary>
+    public Task<SaleReturnInfo> CreateReturnAsync(CreateSaleReturnRequest request, CancellationToken ct = default) =>
+        SendAsync<SaleReturnInfo>(HttpMethod.Post, "api/v1/returns", request, authenticated: true, withDevice: true, ct);
+
+    public async Task<IReadOnlyList<SaleReturnSummary>> GetReturnsAsync(DateOnly from, DateOnly to, CancellationToken ct = default) =>
+        await SendAsync<List<SaleReturnSummary>>(HttpMethod.Get, $"api/v1/returns?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", null,
+            authenticated: true, withDevice: false, ct);
+
+    public Task<SaleReturnInfo> GetReturnAsync(Guid returnId, CancellationToken ct = default) =>
+        SendAsync<SaleReturnInfo>(HttpMethod.Get, $"api/v1/returns/{returnId}", null, authenticated: true, withDevice: false, ct);
+
     public async Task<IReadOnlyList<StockLocation>> GetStockLocationsAsync(CancellationToken ct = default) =>
         await SendAsync<List<StockLocation>>(HttpMethod.Get, "api/v1/stock/locations", null, authenticated: true, withDevice: false, ct);
 

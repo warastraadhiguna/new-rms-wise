@@ -32,7 +32,7 @@ public sealed class SalesConfigService(DbConnectionFactory connections, NodeIden
         var methods = (await c.QueryAsync<PaymentMethodDto>(new CommandDefinition(
             """
             SELECT id AS Id, code AS Code, name AS Name, is_cash AS IsCash, is_credit AS IsCredit
-            FROM payment_methods WHERE is_active = 1 AND deleted_at IS NULL
+            FROM payment_methods WHERE is_active = 1 AND deleted_at IS NULL AND code <> 'RETURN'   -- RETUR only through Tukar Barang
             ORDER BY FIELD(code, 'CASH', 'DEBIT', 'QRIS', 'TRANSFER', 'CREDIT') = 0,
                      FIELD(code, 'CASH', 'DEBIT', 'QRIS', 'TRANSFER', 'CREDIT'), name
             """, cancellationToken: ct))).ToList();

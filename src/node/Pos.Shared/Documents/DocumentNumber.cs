@@ -11,8 +11,9 @@ public static class DocumentTypes
     public const string StockAdjustment = "ADJ";
     public const string CartCancellation = "BT";
     public const string LocationTransfer = "MT";
+    public const string SaleReturn = "RT";
 
-    public static IReadOnlyList<string> All { get; } = [Sale, CashierShift, StockAdjustment, CartCancellation, LocationTransfer];
+    public static IReadOnlyList<string> All { get; } = [Sale, CashierShift, StockAdjustment, CartCancellation, LocationTransfer, SaleReturn];
 }
 
 /// <summary>

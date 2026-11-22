@@ -132,6 +132,40 @@ public sealed class ReceiptService(
         }
     }
 
+    /// <summary>"Bukti Retur Penjualan" to the receipt printer (no drawer pulse); on screen without a printer. Never throws.</summary>
+    public ReceiptPrintResult PrintReturn(SaleReturnInfo ret, bool reprint = false)
+    {
+        ArgumentNullException.ThrowIfNull(ret);
+        var lines = ReturnReceiptFormatter.Format(ToReturnReceiptData(ret), settings.Width, reprint);
+        if (string.IsNullOrWhiteSpace(settings.PrinterName))
+        {
+            const string message = "Printer struk belum diatur (printer_name di settings.json). Bukti retur ditampilkan di layar.";
+            dialogs.ShowReceiptPreview(message, lines);
+            return new ReceiptPrintResult(false, ret.Number, message);
+        }
+        try
+        {
+            printer.PrintRaw(settings.PrinterName, EscPos.Receipt(lines, openDrawer: false), $"Retur {ret.Number}");
+            return new ReceiptPrintResult(true, ret.Number, null);
+        }
+        catch (PrinterException ex)
+        {
+            var message = $"Gagal mencetak ke printer \"{settings.PrinterName}\": {ex.Message} Bukti retur ditampilkan di layar; retur tetap tersimpan.";
+            dialogs.ShowReceiptPreview(message, lines);
+            return new ReceiptPrintResult(false, ret.Number, message);
+        }
+    }
+
+    public static ReturnReceiptData ToReturnReceiptData(SaleReturnInfo ret)
+    {
+        ArgumentNullException.ThrowIfNull(ret);
+        return new ReturnReceiptData(
+            ret.Receipt?.HeaderLines ?? [], ret.Number, BranchTime.ToLocal(ret.ReturnedAt, ret.TimeZone), ret.SaleNumber, ret.CreatedByName,
+            ret.CustomerName is { } name ? $"{ret.CustomerCode} - {name}" : null,
+            ret.Lines.Select(l => new ReturnReceiptItem(l.Name, l.Qty, l.UnitCode, l.UnitPrice, l.LineTotal, l.Condition == "DAMAGED")).ToList(),
+            ret.Total, ret.Settlement, ret.ReasonName, ret.Notes);
+    }
+
     /// <summary>A closed shift → report fields (branch time); "Ditutup oleh" only when not the cashier.</summary>
     public static ShiftReportData ToShiftReportData(ShiftSummary shift)
     {

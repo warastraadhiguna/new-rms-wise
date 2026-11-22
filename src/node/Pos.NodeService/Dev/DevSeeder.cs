@@ -246,6 +246,12 @@ public sealed class DevSeeder(TransactionRunner runner, TimeProvider clock, ILog
                 "INSERT INTO locations (id, node_id, code, name, type, is_sellable) VALUES (@id, @node, 'RUSAK', 'Barang rusak', 'DAMAGED', 0)",
                 new { id = Guid.CreateVersion7(), node });
         }
+        // TUKAR BARANG pays the new sale with this method (not offered in Form Bayar).
+        changes += await Exec(
+            """
+            INSERT INTO payment_methods (id, code, name, is_cash, is_credit)
+            SELECT @id, 'RETURN', 'RETUR', 0, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM payment_methods WHERE code = 'RETURN')
+            """, new { id = Guid.CreateVersion7() });
         foreach (var permission in new[] { "sale.history", "sale.void", "sale.return.late" })
         {
             changes += await Exec(

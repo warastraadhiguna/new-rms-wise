@@ -36,7 +36,7 @@ public class DatabaseTests(DatabaseFixture db)
 
         Assert.True(outcome.Successful);
         Assert.Empty(outcome.ScriptsApplied);
-        Assert.Equal("0008_shift_closing.sql", migrator.GetAppliedScripts().Order().Last());
+        Assert.Equal("0009_sale_returns.sql", migrator.GetAppliedScripts().Order().Last());
     }
 
     [DatabaseFact]

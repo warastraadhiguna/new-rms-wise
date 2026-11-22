@@ -45,6 +45,9 @@
     <StackPanel Margin="14,12">
         <TextBlock x:Name="MemberText" Text="{Binding CustomerName, StringFormat=Member: {0}}" Margin="0,0,0,6" FontWeight="SemiBold"
                    Visibility="{Binding CustomerName, Converter={StaticResource VisibleWhenText}}" />
+        <!-- TUKAR BARANG: the return value pays part of this nota; Bayar / Kembali are for the rest. -->
+        <TextBlock x:Name="ExchangeText" Text="{Binding ExchangeText}" Margin="0,0,0,6" FontWeight="SemiBold" Foreground="#1E5AA8"
+                   TextWrapping="Wrap" Visibility="{Binding ExchangeText, Converter={StaticResource VisibleWhenText}}" />
 
         <Grid>
             <Grid.ColumnDefinitions>

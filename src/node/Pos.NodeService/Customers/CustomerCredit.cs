@@ -4,7 +4,7 @@ using MySqlConnector;
 namespace Pos.NodeService.Customers;
 
 /// <summary>
-/// Customer balances from local data only: credit of non-voided sales minus receivable payments recorded
+/// Customer balances from local data only: credit of non-voided sales minus receivable payments and POTONG PIUTANG returns recorded
 /// at this node (replicas from other stores included once they are synced), and loyalty points.
 /// </summary>
 public static class CustomerCredit
@@ -26,8 +26,17 @@ public static class CustomerCredit
             "SELECT customer_id, SUM(amount) FROM receivable_payments WHERE customer_id IN @ids GROUP BY customer_id",
             new { ids = result.Keys.ToList() }, tx, cancellationToken: ct));
 
+        var reduced = await c.QueryAsync<(Guid CustomerId, decimal Amount)>(new CommandDefinition(
+            """
+            SELECT s.customer_id, SUM(r.total) FROM sale_returns r JOIN sales s ON s.id = r.sale_id
+            WHERE s.customer_id IN @ids AND r.settlement = 'REDUCE_RECEIVABLE'
+              AND NOT EXISTS (SELECT 1 FROM sale_voids v WHERE v.sale_id = s.id)
+            GROUP BY s.customer_id
+            """, new { ids = result.Keys.ToList() }, tx, cancellationToken: ct));
         foreach (var row in credit)
             result[row.CustomerId] += row.Amount;
+        foreach (var row in reduced)
+            result[row.CustomerId] -= row.Amount;
         foreach (var row in paid)
             result[row.CustomerId] -= row.Amount;
         return result;

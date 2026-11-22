@@ -4,10 +4,11 @@
              xmlns:infra="clr-namespace:Pos.Desktop.Infrastructure"
              FontFamily="Tahoma" FontSize="13" Background="#EEF3FA"
              infra:FocusBehavior.Request="{Binding FocusRequest}">
-    <!-- RMS 2 keys: F11 Lihat/Cetak, Shift+Del Void (RMS 2 Hapus), F8 Export, Esc close; Enter on a row = Lihat. -->
+    <!-- RMS 2 keys: F11 Lihat/Cetak, F12 Retur, Shift+Del Void (RMS 2 Hapus), F8 Export, Esc close; Enter on a row = Lihat. -->
     <UserControl.InputBindings>
         <KeyBinding Key="F11" Command="{Binding ViewCommand}" />
         <KeyBinding Key="F8" Command="{Binding ExportCommand}" />
+        <KeyBinding Key="F12" Command="{Binding ReturnCommand}" />
         <KeyBinding Key="Delete" Modifiers="Shift" Command="{Binding VoidCommand}" />
         <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
     </UserControl.InputBindings>
@@ -62,6 +63,7 @@
         <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
             <StackPanel x:Name="ButtonPanel" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button x:Name="ViewButton" Content="Lihat/Cetak [F11]" Command="{Binding ViewCommand}" />
+                <Button x:Name="ReturnButton" Content="Retur [F12]" Command="{Binding ReturnCommand}" />
                 <Button x:Name="VoidButton" Content="Void [SHF DEL]" Command="{Binding VoidCommand}" />
                 <Button x:Name="ExportButton" Content="Export to File [F8]" Command="{Binding ExportCommand}" />
             </StackPanel>

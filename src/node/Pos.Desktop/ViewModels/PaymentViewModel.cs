@@ -24,15 +24,17 @@ public sealed partial class PaymentViewModel : DialogViewModel
     private readonly SalesConfig _config;
     private readonly Cart _cart;
     private readonly Action<CustomerItem>? _onCustomerPicked;
+    private readonly SaleReturnInfo? _exchange;
     private CustomerItem? _customer;
     private int _focusSequence;
     private bool _bayarEdited;
     private bool _recalculating;
 
     /// <param name="onCustomerPicked">A member chosen inside this dialog (F4 / KREDIT) is also set on the sales form.</param>
+    /// <param name="exchange">TUKAR BARANG: an unused EXCHANGE return whose value pays part of this nota (payment RETURN).</param>
     public PaymentViewModel(
         INodeApi api, IDialogService dialogs, SalesConfig config, Cart cart, CustomerItem? customer, Guid saleId,
-        Action<CustomerItem>? onCustomerPicked = null)
+        Action<CustomerItem>? onCustomerPicked = null, SaleReturnInfo? exchange = null)
     {
         _api = api;
         _dialogs = dialogs;
@@ -40,6 +42,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
         _cart = cart;
         _customer = customer;
         _onCustomerPicked = onCustomerPicked;
+        _exchange = exchange;
         SaleId = saleId;
         Total = cart.Total;
         _selectedMethod = config.PaymentMethods.FirstOrDefault(m => m.IsCash) ?? config.PaymentMethods.FirstOrDefault();
@@ -150,6 +153,22 @@ public sealed partial class PaymentViewModel : DialogViewModel
 
     public string ChangeLabel => IsCredit ? "Sisa Piutang" : "Kembali";
 
+    /// <summary>TUKAR BARANG: the value of the attached return (0 without one).</summary>
+    public decimal ExchangeAmount => _exchange?.Total ?? 0m;
+
+    /// <summary>What is left to pay with the chosen method: Grand Total minus the return value.</summary>
+    public decimal Due => Math.Max(0m, GrandTotal - ExchangeAmount);
+
+    public string? ExchangeText => _exchange is { } x
+        ? $"Tukar Barang: Retur {x.Number} senilai {Format(x.Total)} — sisa dibayar {Format(Due)}"
+        : null;
+
+    partial void OnGrandTotalChanged(decimal value)
+    {
+        OnPropertyChanged(nameof(Due));
+        OnPropertyChanged(nameof(ExchangeText));
+    }
+
     public const string MemberNeededMessage = "Pilih member untuk KREDIT (F4).";
 
     private CashRoundingSettings Rounding => new(_config.CashRoundingStep, CashRoundingModes.Parse(_config.CashRoundingMode));
@@ -189,7 +208,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
             if (!IsCash && !IsCredit)
             {
                 GrandTotal = ComputeGrandTotal();
-                BayarText = Format(GrandTotal);
+                BayarText = Format(Due);
             }
             else if (!_bayarEdited)
             {
@@ -211,7 +230,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
     private decimal ComputeGrandTotal()
     {
         var afterDiscount = Total - DiscountAmount;
-        var cashUsed = IsCash;
+        var cashUsed = IsCash && afterDiscount > ExchangeAmount;   // only the rest after a Tukar Barang is paid in cash
         return cashUsed ? Rupiah.RoundCash(afterDiscount, Rounding.Step, Rounding.Mode).Total : afterDiscount;
     }
 
@@ -225,10 +244,10 @@ public sealed partial class PaymentViewModel : DialogViewModel
         if (IsCredit)
         {
             GrandTotal = ComputeGrandTotal();
-            Change = ReadDownPayment() is { } dp ? Math.Max(0m, GrandTotal - dp) : GrandTotal;
+            Change = ReadDownPayment() is { } dp ? Math.Max(0m, Due - dp) : Due;
             return;
         }
-        Change = IsCash && MoneyInput.TryParse(BayarText, out var bayar) && bayar > GrandTotal ? bayar - GrandTotal : 0m;
+        Change = IsCash && MoneyInput.TryParse(BayarText, out var bayar) && bayar > Due ? bayar - Due : 0m;
     }
 
     /// <summary>
@@ -240,7 +259,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
     private Task BayarEnterAsync()
     {
         if (BayarText.Trim().Length == 0 && !IsCredit)
-            BayarText = Format(GrandTotal);
+            BayarText = Format(Due);
         return SaveAsync();
     }
 
@@ -261,9 +280,19 @@ public sealed partial class PaymentViewModel : DialogViewModel
             return;
         }
 
+        if (_exchange is not null && ExchangeAmount > ComputeGrandTotal())
+        {
+            ErrorMessage = $"Nilai belanja ({Format(ComputeGrandTotal())}) kurang dari nilai retur ({Format(ExchangeAmount)}). " +
+                           "Tambah barang; tukar barang tidak bisa diuangkan.";
+            Focus("bayar");
+            return;
+        }
+
         var paid = method.IsCredit ? CreditPayments(method) : SinglePayment(method);
         if (paid is null)
             return;
+        if (_exchange is { } exchange)
+            paid.Insert(0, new PaidWith(ExchangeMethod, new PaymentInput(PaymentKind.NonCash, exchange.Total)));
 
         try
         {
@@ -294,12 +323,14 @@ public sealed partial class PaymentViewModel : DialogViewModel
             SaleId,
             _customer?.Id,
             _cart.Lines.Select(l => new SaleLineRequest(l.Item.ProductUnitId, l.Qty)).ToList(),
-            paid.Select(p => new SalePaymentRequest(p.Method.Code, p.Input.Amount, p.Method.IsCash || p.Method.IsCredit ? null : reference)).ToList(),
+            paid.Select(p => new SalePaymentRequest(p.Method.Code, p.Input.Amount,
+                ReferenceEquals(p.Method, ExchangeMethod) ? _exchange!.Number : p.Method.IsCash || p.Method.IsCredit ? null : reference)).ToList(),
             string.IsNullOrWhiteSpace(NotesText) ? null : NotesText.Trim(),
             discount.PercentValue,
             discount.AmountValue,
             supervisor?.Username,
-            supervisor?.Password);
+            supervisor?.Password,
+            _exchange?.Id);
 
         IsBusy = true;
         try
@@ -326,6 +357,9 @@ public sealed partial class PaymentViewModel : DialogViewModel
     private bool CanSave() => !IsBusy;
 
     private sealed record PaidWith(PaymentMethodInfo Method, PaymentInput Input);
+
+    /// <summary>Payment method of TUKAR BARANG (not offered in the drop-down; the server checks the return).</summary>
+    private static readonly PaymentMethodInfo ExchangeMethod = new(Guid.Empty, "RETURN", "RETUR", IsCash: false, IsCredit: false);
 
     /// <summary>TUNAI / DEBIT / QRIS / TRANSFER: one payment of the typed amount (none when Bayar is empty).</summary>
     private List<PaidWith>? SinglePayment(PaymentMethodInfo method)
@@ -360,7 +394,7 @@ public sealed partial class PaymentViewModel : DialogViewModel
             return null;
         }
 
-        var grandTotal = ComputeGrandTotal();
+        var grandTotal = Math.Max(0m, ComputeGrandTotal() - ExchangeAmount);   // what is left after a Tukar Barang
         if (dp >= grandTotal && grandTotal > 0)
         {
             // DP = Grand Total would leave nothing on credit: the server would treat it as a TUNAI sale and round it.

@@ -205,6 +205,21 @@ public class CloseShiftUiTests
         Assert.Contains("Ditutup  : 22/11/2026 15:05", lines);
     });
 
+
+    [Fact]
+    public void Cash_refunds_of_returns_are_shown_as_retur_tunai()
+    {
+        _api.OnCloseShift = r => Shifts.Closed(r.ShiftId, r.CountedCash) with { CashRefunds = 5000m, ExpectedCash = 263000m, Difference = r.CountedCash - 263000m };
+        WithDialog(Vm(), window =>
+        {
+            Find<TextBox>(window, "CountedBox").Text = "263.000";
+            PressKey(Find<TextBox>(window, "CountedBox"), Key.Enter);
+            DoEvents();
+
+            Assert.Equal("-5.000", Find<TextBlock>(window, "RefundsValue").Text);
+            Assert.Equal("263.000", Find<TextBlock>(window, "ExpectedValue").Text);
+        });
+    }
     [Fact]
     public void Escape_before_closing_cancels_without_closing() => WithDialog(Vm(), window =>
     {

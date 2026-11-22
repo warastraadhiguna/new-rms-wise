@@ -104,7 +104,8 @@ public sealed record CreateSaleRequest(
     decimal? DiscountPct,
     decimal? DiscountAmount,
     string? SupervisorUsername,
-    string? SupervisorPassword);
+    string? SupervisorPassword,
+    Guid? ExchangeReturnId = null);
 
 public sealed record SaleSummary(
     Guid Id, string Number, decimal Subtotal, decimal DiscountAmount, decimal RoundingAmount, decimal Total,
@@ -159,7 +160,8 @@ public sealed record ShiftSummary(
     decimal? CountedCash,
     decimal? Difference,
     string? Notes,
-    ReceiptText? Receipt)
+    ReceiptText? Receipt,
+    decimal? CashRefunds = null)
 {
     public bool IsClosed => Status == "CLOSED";
 
@@ -168,7 +170,7 @@ public sealed record ShiftSummary(
 
     public Pos.Shared.Sales.ShiftTotals? Totals => HasFigures
         ? new(OpeningCash, CashSales ?? 0m, CreditDownPayments ?? 0m, ReceivableCash ?? 0m, CashExpenses ?? 0m,
-            NonCash ?? [], SaleCount ?? 0, CancellationCount ?? 0)
+            NonCash ?? [], SaleCount ?? 0, CancellationCount ?? 0, CashRefunds ?? 0m)
         : null;
 }
 
@@ -214,6 +216,44 @@ public sealed record VoidSaleRequest(Guid Id, Guid ReasonId, string Notes, strin
 public sealed record SaleVoidInfo(
     Guid Id, Guid SaleId, string SaleNumber, Guid ReasonId, string ReasonName, string Notes, DateTime VoidedAt,
     Guid CreatedBy, string CreatedByName, Guid? ApprovedBy, string? ApprovedByName);
+
+/// <summary>A nota line for the return form.</summary>
+public sealed record ReturnSourceLine(
+    Guid SaleLineId, int LineNo, Guid ProductId, string Sku, string Name, string UnitCode, decimal SoldQty, decimal ReturnedQty,
+    decimal ReturnableQty, decimal NetUnitPrice, decimal NetLineTotal, bool AllowDecimal);
+
+/// <summary>A nota to return (GET /returns/source). <c>SoldAt</c> UTC.</summary>
+public sealed record ReturnSource(
+    Guid SaleId, string SaleNumber, DateTime SoldAt, string TimeZone, DateOnly SaleDate, string? CustomerCode, string? CustomerName,
+    string CashierName, decimal Total, decimal CreditAmount, decimal Outstanding, bool Voided, int WindowDays, bool WithinWindow,
+    int CurrencyDecimals, IReadOnlyList<ReturnSourceLine> Lines);
+
+/// <param name="Condition">GOOD (BAIK) or DAMAGED (RUSAK).</param>
+public sealed record SaleReturnLineRequest(Guid SaleLineId, decimal Qty, string Condition);
+
+public sealed record CreateSaleReturnRequest(
+    Guid Id, Guid SaleId, string Settlement, Guid ReasonId, string? Notes, IReadOnlyList<SaleReturnLineRequest> Lines, string? ApprovalToken);
+
+public sealed record ReturnExpiry(DateOnly? ExpiryDate, decimal BaseQty);
+
+public sealed record SaleReturnLine(
+    int LineNo, Guid SaleLineId, Guid ProductId, string Sku, string Name, Guid ProductUnitId, string UnitCode, decimal Qty, decimal BaseQty,
+    decimal UnitPrice, decimal LineTotal, string Condition, Guid LocationId, string LocationCode, IReadOnlyList<ReturnExpiry> Expiries);
+
+/// <summary>A stored return (UTC time). <c>ExchangeSaleId</c>: the sale its value paid (TUKAR BARANG), null while unused.</summary>
+public sealed record SaleReturnInfo(
+    Guid Id, string Number, Guid SaleId, string SaleNumber, Guid? ShiftId, DateTime ReturnedAt, string TimeZone, string Settlement,
+    decimal Total, decimal RefundAmount, Guid ReasonId, string ReasonName, string? Notes, Guid CreatedBy, string CreatedByName,
+    Guid? ApprovedBy, string? ApprovedByName, string? CustomerCode, string? CustomerName, Guid? ExchangeSaleId, string? ExchangeSaleNumber,
+    IReadOnlyList<SaleReturnLine> Lines, ReceiptText? Receipt)
+{
+    public bool IsUnusedExchange => Settlement == Pos.Shared.Sales.ReturnSettlements.Exchange && ExchangeSaleId is null;
+}
+
+/// <summary>One row of Data Retur Penjualan (UTC time).</summary>
+public sealed record SaleReturnSummary(
+    Guid Id, string Number, DateTime ReturnedAt, string SaleNumber, string? CustomerName, string CreatedByName, string Settlement,
+    decimal Total, string? Notes, bool ExchangeUsed, string TimeZone);
 public interface INodeApi
 {
     Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default);
@@ -256,6 +296,16 @@ public interface INodeApi
 
     /// <summary>Void of a sale whose shift is open; the same request id again returns the stored void.</summary>
     Task<SaleVoidInfo> VoidSaleAsync(Guid saleId, VoidSaleRequest request, CancellationToken ct = default);
+
+    /// <summary>The nota to return, by id (Data Penjualan) or by number (typed / scanned).</summary>
+    Task<ReturnSource> GetReturnSourceAsync(Guid? saleId, string? number, CancellationToken ct = default);
+
+    /// <summary>Saves a return; the same id again returns the stored return.</summary>
+    Task<SaleReturnInfo> CreateReturnAsync(CreateSaleReturnRequest request, CancellationToken ct = default);
+
+    Task<IReadOnlyList<SaleReturnSummary>> GetReturnsAsync(DateOnly from, DateOnly to, CancellationToken ct = default);
+
+    Task<SaleReturnInfo> GetReturnAsync(Guid returnId, CancellationToken ct = default);
 
     Task<IReadOnlyList<StockLocation>> GetStockLocationsAsync(CancellationToken ct = default);
 
@@ -322,6 +372,9 @@ public interface IDialogService
 
     /// <summary>A reason from the list plus Keterangan (both required); null when cancelled.</summary>
     ReasonChoice? AskReason(string title, string prompt, IReadOnlyList<ReasonItem> reasons);
+
+    /// <summary>One line of text (e.g. a nota number to return); null when cancelled or empty.</summary>
+    string? AskText(string title, string prompt);
 
     /// <summary>"Export to File": where to save; null when cancelled.</summary>
     string? AskSaveFile(string suggestedFileName);

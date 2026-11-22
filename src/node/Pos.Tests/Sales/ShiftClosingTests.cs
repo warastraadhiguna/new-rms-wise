@@ -95,3 +95,21 @@ public class ShiftClosingTests
 
     private static decimal D(string value) => decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
 }
+
+public class ShiftClosingRefundTests
+{
+    [Fact]
+    public void Cash_refunds_of_returns_reduce_the_expected_cash()
+    {
+        var totals = new ShiftTotals(200000m, 50000m, 0m, 0m, 0m, [], 3, 0, CashRefunds: 12000m);
+
+        Assert.Equal(238000m, ShiftClosing.ExpectedCash(totals));
+    }
+
+    [Fact]
+    public void Negative_refunds_are_rejected()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ShiftClosing.ExpectedCash(new ShiftTotals(0m, 0m, 0m, 0m, 0m, [], 0, 0, CashRefunds: -1m)));
+    }
+}

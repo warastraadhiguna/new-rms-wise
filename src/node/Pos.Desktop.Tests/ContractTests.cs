@@ -208,6 +208,36 @@ public class ContractTests
         Assert.Equal(DateTimeKind.Utc, credit.SoldAt.Kind);
         Assert.True(credit.ShiftOpen);
     }
+
+    [Fact]
+    public async Task Return_source_create_list_and_detail()
+    {
+        _server.Reply(HttpStatusCode.OK, Json("return-source")).Reply(HttpStatusCode.Created, Json("return"))
+            .Reply(HttpStatusCode.OK, Json("returns")).Reply(HttpStatusCode.OK, Json("return"));
+        var saleId = Guid.Parse("01a201da-ba0d-7691-846e-1ddb848401a0");
+
+        var source = await Client().GetReturnSourceAsync(null, "TK01-SL-202611-000001");
+        var line = Assert.Single(source.Lines);
+        var created = await Client().CreateReturnAsync(new CreateSaleReturnRequest(Guid.CreateVersion7(), saleId, "REFUND", Guid.CreateVersion7(),
+            "uji retur", [new SaleReturnLineRequest(line.SaleLineId, 1m, "GOOD")], null));
+        var list = await Client().GetReturnsAsync(new DateOnly(2026, 11, 22), new DateOnly(2026, 11, 22));
+        var detail = await Client().GetReturnAsync(created.Id);
+
+        Assert.Equal("/api/v1/returns/source?number=TK01-SL-202611-000001", _server.Requests[0].Request.RequestUri!.PathAndQuery);
+        Assert.Equal((saleId, new DateOnly(2026, 11, 22), true, 7), (source.SaleId, source.SaleDate, source.WithinWindow, source.WindowDays));
+        Assert.Equal((2m, 2m, 5000m, false), (line.SoldQty, line.ReturnableQty, line.NetUnitPrice, line.AllowDecimal));
+        Assert.True(_server.Requests[1].Request.Headers.Contains(NodeApiClient.DeviceHeader));    // a refund needs this PC's shift
+        Assert.Contains("\"condition\":\"GOOD\"", _server.Requests[1].Body);
+        Assert.Equal(("TK01-RT-202611-000001", "REFUND", 5000m, "Barang rusak"), (created.Number, created.Settlement, created.Total, created.ReasonName));
+        Assert.Equal(DateTimeKind.Utc, created.ReturnedAt.Kind);
+        Assert.Equal(("DISPLAY", 1m), (created.Lines[0].LocationCode, created.Lines[0].Expiries[0].BaseQty));
+        Assert.False(created.IsUnusedExchange);
+        Assert.Equal(("TK01-RT-202611-000001", false), (Assert.Single(list).Number, list[0].ExchangeUsed));
+        Assert.Contains(ReturnReceiptFormatterLines(detail), l => l.Contains("Total Retur"));
+    }
+
+    private static IReadOnlyList<string> ReturnReceiptFormatterLines(SaleReturnInfo ret) =>
+        Pos.Shared.Printing.ReturnReceiptFormatter.Format(ReceiptService.ToReturnReceiptData(ret));
     [Fact]
     public async Task Customer_search()
     {

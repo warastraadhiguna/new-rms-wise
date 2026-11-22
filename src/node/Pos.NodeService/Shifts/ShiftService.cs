@@ -77,7 +77,8 @@ public sealed record ShiftSummaryDto(
     decimal? Difference,
     string? Notes,
     int RowVersion,
-    ReceiptTextDto? Receipt);
+    ReceiptTextDto? Receipt,
+    decimal? CashRefunds = null);
 
 /// <summary>
 /// Cashier shifts: one OPEN shift per device. Closing sums the shift's documents and freezes the summary.
@@ -180,6 +181,7 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
             CreditDownPayments = totals.CreditDownPayments,
             ReceivableCash = totals.ReceivableCash,
             CashExpenses = totals.CashExpenses,
+            CashRefunds = totals.CashRefunds,
             NonCash = totals.NonCash,
             SaleCount = totals.SaleCount,
             CancellationCount = totals.CancellationCount,
@@ -231,7 +233,7 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
                 UPDATE cashier_shifts
                 SET status = @closed, closed_at = @now, closed_by = @userId,
                     cash_sales = @CashSales, credit_down_payments = @CreditDownPayments, receivable_cash = @ReceivableCash,
-                    cash_expenses = @CashExpenses, non_cash_totals = @nonCash, sale_count = @SaleCount,
+                    cash_expenses = @CashExpenses, cash_refunds = @CashRefunds, non_cash_totals = @nonCash, sale_count = @SaleCount,
                     cancellation_count = @CancellationCount, expected_cash = @expected, counted_cash = @CountedCash,
                     notes = @notes, row_version = @rowVersion
                 WHERE id = @Id AND status = @open
@@ -239,7 +241,7 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
                 new
                 {
                     closed = ShiftStatus.Closed, now, userId, totals.CashSales, totals.CreditDownPayments, totals.ReceivableCash,
-                    totals.CashExpenses, nonCash = JsonSerializer.Serialize(totals.NonCash, PosJson.Options), totals.SaleCount,
+                    totals.CashExpenses, totals.CashRefunds, nonCash = JsonSerializer.Serialize(totals.NonCash, PosJson.Options), totals.SaleCount,
                     totals.CancellationCount, expected, request.CountedCash, notes, rowVersion, shift.Id, open = ShiftStatus.Open,
                 },
                 tx, cancellationToken: ct));
@@ -285,9 +287,9 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
               FROM sale_payments sp JOIN sales s ON s.id = sp.sale_id
               WHERE s.shift_id = @shiftId AND {NotVoided}
             ) x ON x.payment_method_id = pm.id
-            WHERE pm.is_cash = 0 AND ((pm.is_active = 1 AND pm.deleted_at IS NULL) OR x.sale_id IS NOT NULL)
+            WHERE pm.is_cash = 0 AND ((pm.is_active = 1 AND pm.deleted_at IS NULL AND pm.code <> 'RETURN') OR x.sale_id IS NOT NULL)
             GROUP BY pm.id, pm.code, pm.name, pm.is_credit
-            ORDER BY pm.is_credit, FIELD(pm.code, 'DEBIT', 'QRIS', 'TRANSFER') = 0, FIELD(pm.code, 'DEBIT', 'QRIS', 'TRANSFER'), pm.name
+            ORDER BY pm.is_credit, FIELD(pm.code, 'DEBIT', 'QRIS', 'TRANSFER', 'RETURN') = 0, FIELD(pm.code, 'DEBIT', 'QRIS', 'TRANSFER', 'RETURN'), pm.name
             """, new { shiftId }, tx, cancellationToken: ct)))
             .Select(m => new ShiftMethodTotal(m.Code, m.Name, m.Amount, (int)m.Count)).ToList();
 
@@ -298,13 +300,14 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
                  JOIN payment_methods pm ON pm.id = rp.payment_method_id
                  WHERE rp.shift_id = @shiftId AND pm.is_cash = 1) AS ReceivableCash,
               (SELECT COALESCE(SUM(amount), 0) FROM cash_expenses WHERE shift_id = @shiftId) AS CashExpenses,
+              (SELECT COALESCE(SUM(refund_amount), 0) FROM sale_returns WHERE shift_id = @shiftId) AS CashRefunds,
               (SELECT COUNT(*) FROM sales s WHERE s.shift_id = @shiftId AND {NotVoided}) AS SaleCount,
               (SELECT COUNT(*) FROM cart_cancellations WHERE shift_id = @shiftId)
                 + (SELECT COUNT(*) FROM sale_voids v JOIN sales s ON s.id = v.sale_id WHERE s.shift_id = @shiftId) AS CancellationCount
             """, new { shiftId }, tx, cancellationToken: ct));
 
         return new ShiftTotals(openingCash, cash.CashSales, cash.CreditDownPayments, other.ReceivableCash, other.CashExpenses,
-            nonCash, (int)other.SaleCount, (int)other.CancellationCount);
+            nonCash, (int)other.SaleCount, (int)other.CancellationCount, other.CashRefunds);
     }
 
     /// <summary>Setting shift.blind_count (branch row wins): JSON true/false (or "true"/"false", 1/0); default true.</summary>
@@ -337,7 +340,7 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
                    u.full_name AS CashierName, cs.status AS Status, cs.opened_at AS OpenedAt, cs.closed_at AS ClosedAt,
                    cs.closed_by AS ClosedBy, cb.full_name AS ClosedByName, cs.opening_cash AS OpeningCash,
                    cs.cash_sales AS CashSales, cs.credit_down_payments AS CreditDownPayments, cs.receivable_cash AS ReceivableCash,
-                   cs.cash_expenses AS CashExpenses, CAST(cs.non_cash_totals AS CHAR) AS NonCashJson, cs.sale_count AS SaleCount,
+                   cs.cash_expenses AS CashExpenses, cs.cash_refunds AS CashRefunds, CAST(cs.non_cash_totals AS CHAR) AS NonCashJson, cs.sale_count AS SaleCount,
                    cs.cancellation_count AS CancellationCount, cs.expected_cash AS ExpectedCash, cs.counted_cash AS CountedCash,
                    cs.notes AS Notes, cs.row_version AS RowVersion
             FROM cashier_shifts cs
@@ -354,7 +357,7 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
         s.NonCashJson is null ? null : JsonSerializer.Deserialize<List<ShiftMethodTotal>>(s.NonCashJson, PosJson.Options),
         s.SaleCount, s.CancellationCount, s.ExpectedCash, s.CountedCash,
         s.CountedCash is { } counted && s.ExpectedCash is { } expected ? ShiftClosing.Difference(counted, expected) : null,
-        s.Notes, s.RowVersion, receipt);
+        s.Notes, s.RowVersion, receipt, s.CashRefunds);
 
 
     private sealed class ShiftRow
@@ -375,6 +378,7 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
         public decimal? CreditDownPayments { get; set; }
         public decimal? ReceivableCash { get; set; }
         public decimal? CashExpenses { get; set; }
+        public decimal? CashRefunds { get; set; }
         public string? NonCashJson { get; set; }
         public int? SaleCount { get; set; }
         public int? CancellationCount { get; set; }
@@ -402,6 +406,7 @@ public sealed class ShiftService(TransactionRunner runner, NodeIdentity nodeIden
     {
         public decimal ReceivableCash { get; set; }
         public decimal CashExpenses { get; set; }
+        public decimal CashRefunds { get; set; }
         public long SaleCount { get; set; }
         public long CancellationCount { get; set; }
     }

@@ -478,7 +478,7 @@ public sealed partial class SalesViewModel : FormTab
                 Customer = picked;
                 _pendingSaleId = saleId;
                 SaveCart();
-            });
+            }, exchange: ExchangeReturn);
         var result = _dialogs.ShowPayment(payment);
         if (result is null)
         {
@@ -489,6 +489,7 @@ public sealed partial class SalesViewModel : FormTab
         // The sale is saved: from here on nothing may undo it, whatever happens with the printer.
         ClearTransaction();
         _receipts.RememberLastSale(result.Sale.Id);
+        ExchangeReturn = null;                                                      // the return's value is used
         var printed = await PrintReceiptAsync(result.Sale.Id, reprint: false);
         _dialogs.ShowSaleResult(result);
         StatusMessage = $"Nota {result.Sale.Number} tersimpan. Kembali Rp {result.Sale.Change.ToString("#,0", Indonesian)}."
@@ -527,6 +528,26 @@ public sealed partial class SalesViewModel : FormTab
         }
     }
 
+
+    // ---- tukar barang -----------------------------------------------------------------------------
+
+    /// <summary>TUKAR BARANG: an unused EXCHANGE return whose value pays part of the next nota (Bayar shows the rest).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ExchangeText))]
+    private SaleReturnInfo? _exchangeReturn;
+
+    public string? ExchangeText => ExchangeReturn is { } r
+        ? $"Tukar Barang: Retur {r.Number} senilai {r.Total.ToString("#,0", Indonesian)} dipakai saat Bayar [F6]."
+        : null;
+
+    /// <summary>From Retur Penjualan / Data Retur Penjualan: scan the new items, then F6.</summary>
+    public void AttachExchange(SaleReturnInfo ret)
+    {
+        ArgumentNullException.ThrowIfNull(ret);
+        ExchangeReturn = ret;
+        StatusMessage = $"Scan barang pengganti untuk retur {ret.Number}, lalu Bayar [F6].";
+        RequestFocus("search");
+    }
     // ---- cancel and close ------------------------------------------------------------------------
 
     /// <summary>F12 "Batal": cancel the whole cart with a reason (saved as a cart_cancellations document).</summary>

@@ -15,7 +15,9 @@ public sealed record FormFactories(
     Func<LocationTransferViewModel>? LocationTransfer = null,
     Func<LocationTransferListViewModel>? LocationTransferList = null,
     Func<ShiftInfo, CloseShiftViewModel>? CloseShift = null,
-    Func<SalesListViewModel>? SalesList = null);
+    Func<SalesListViewModel>? SalesList = null,
+    Func<ReturnFormViewModel>? ReturnForm = null,
+    Func<ReturnListViewModel>? ReturnList = null);
 
 /// <summary>
 /// The main window: a menu per group as in RMS 2 (Penjualan, Stok, Laporan: Kartu Stok), shown by permission (sale.create,
@@ -166,7 +168,66 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (!CanViewSales)
             return;
-        Show(Tabs.OfType<SalesListViewModel>().FirstOrDefault() ?? _forms.SalesList!());
+        if (Tabs.OfType<SalesListViewModel>().FirstOrDefault() is { } open)
+        {
+            Show(open);
+            return;
+        }
+        var form = _forms.SalesList!();
+        form.ReturnRequested += (_, saleId) => _ = OpenReturnFormAsync(saleId, null);
+        Show(form);
+    }
+
+    // ---- retur penjualan --------------------------------------------------------------------------
+
+    /// <summary>Menu Penjualan → Data Retur Penjualan (one tab).</summary>
+    [RelayCommand]
+    private void OpenReturnList()
+    {
+        if (!CanViewSales || _forms.ReturnList is null)
+            return;
+        if (Tabs.OfType<ReturnListViewModel>().FirstOrDefault() is { } open)
+        {
+            Show(open);
+            return;
+        }
+        var form = _forms.ReturnList();
+        form.NewReturnRequested += (_, number) => _ = OpenReturnFormAsync(null, number);
+        form.ExchangeRequested += (_, ret) => StartExchange(ret);
+        Show(form);
+    }
+
+    /// <summary>Retur Penjualan for a nota (F12 in Data Penjualan, or Tambah Retur with the number). One tab, reused.</summary>
+    public async Task OpenReturnFormAsync(Guid? saleId, string? number)
+    {
+        if (!_session.Has(Permissions.SaleCreate) || _forms.ReturnForm is null)
+            return;
+        var form = Tabs.OfType<ReturnFormViewModel>().FirstOrDefault();
+        if (form is null)
+        {
+            form = _forms.ReturnForm();
+            form.ExchangeRequested += (_, ret) => StartExchange(ret);
+            form.Saved += (_, _) =>
+            {
+                if (Tabs.OfType<ReturnListViewModel>().FirstOrDefault() is { } list)
+                    _ = list.ShowAsync();
+            };
+        }
+        Show(form);
+        await form.LoadAsync(saleId, number);
+    }
+
+    /// <summary>TUKAR BARANG: Form Penjualan with the return's value as payment of the next nota.</summary>
+    public void StartExchange(SaleReturnInfo ret)
+    {
+        if (!CanSell || _session.Shift is null || _forms.Sales is null)
+        {
+            _dialogs?.ShowMessage($"Tukar barang untuk retur {ret.Number} dilanjutkan di Form Penjualan (perlu shift terbuka di PC ini). " +
+                                  "Buka lagi dari Data Retur Penjualan setelah shift dibuka.");
+            return;
+        }
+        OpenSalesForm();
+        SalesForm?.AttachExchange(ret);
     }
 
     /// <summary>Menu Penjualan → Tutup Shift (a deliberate menu choice: no extra confirmation).</summary>

@@ -254,6 +254,22 @@ public sealed partial class SalesListViewModel : FormTab
         RequestFocus("rows");
     }
 
+    /// <summary>F12 "Retur": opens Retur Penjualan for the selected nota.</summary>
+    public event EventHandler<Guid>? ReturnRequested;
+
+    [RelayCommand]
+    private void Return()
+    {
+        if (SelectedRow is not { } row)
+            return;
+        if (row.IsVoid)
+        {
+            StatusMessage = $"Nota {row.Number} sudah di-void; tidak bisa diretur.";
+            return;
+        }
+        ReturnRequested?.Invoke(this, row.Id);
+    }
+
     /// <summary>F8 "Export to File": every nota of the period and search (all pages).</summary>
     [RelayCommand]
     private async Task ExportAsync()

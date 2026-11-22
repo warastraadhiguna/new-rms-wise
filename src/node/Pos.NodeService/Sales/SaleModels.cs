@@ -18,7 +18,8 @@ public sealed record CreateSaleRequest(
     decimal? DiscountAmount = null,
     string? ApprovalToken = null,
     string? SupervisorUsername = null,
-    string? SupervisorPassword = null);
+    string? SupervisorPassword = null,
+    Guid? ExchangeReturnId = null);
 
 /// <summary>Exactly one of <c>ProductUnitId</c> or <c>Barcode</c>. Discounts are manual and optional.</summary>
 public sealed record SaleLineRequest(

@@ -256,6 +256,77 @@ public sealed class FakeNodeApi : INodeApi
         return Task.FromResult(new SaleVoidInfo(request.Id, saleId, number, request.ReasonId, "Salah input", request.Notes,
             new DateTime(2026, 11, 22, 4, 0, 0, DateTimeKind.Utc), Samples.UserId, "Kasir Satu", null, null));
     }
+
+    // ---- retur penjualan --------------------------------------------------------------------------
+
+    /// <summary>Notas that can be returned, by sale id (also found by number).</summary>
+    public Dictionary<Guid, ReturnSource> ReturnSources { get; } = [];
+    public List<CreateSaleReturnRequest> ReturnRequests { get; } = [];
+    public Dictionary<Guid, SaleReturnInfo> StoredReturns { get; } = [];
+
+    /// <summary>Thrown by the next CreateReturnAsync (then cleared).</summary>
+    public Exception? NextReturnFailure { get; set; }
+
+    public Task<ReturnSource> GetReturnSourceAsync(Guid? saleId, string? number, CancellationToken ct = default)
+    {
+        Calls.Add(saleId is { } id ? $"return-source:{id}" : $"return-source:{number}");
+        var source = saleId is { } key && ReturnSources.TryGetValue(key, out var byId) ? byId
+            : ReturnSources.Values.FirstOrDefault(s => s.SaleNumber == number);
+        return source is not null
+            ? Task.FromResult(source)
+            : Task.FromException<ReturnSource>(new NodeApiException("Nota tidak ditemukan di Node Service.", "unknown_sale", 404));
+    }
+
+    public Task<SaleReturnInfo> CreateReturnAsync(CreateSaleReturnRequest request, CancellationToken ct = default)
+    {
+        Calls.Add($"create-return:{request.Id}");
+        ReturnRequests.Add(request);
+        if (NextReturnFailure is { } failure)
+        {
+            NextReturnFailure = null;
+            return Task.FromException<SaleReturnInfo>(failure);
+        }
+        if (StoredReturns.TryGetValue(request.Id, out var stored))
+            return Task.FromResult(stored);
+
+        var source = ReturnSources[request.SaleId];
+        var lines = request.Lines.Select((l, i) =>
+        {
+            var line = source.Lines.Single(s => s.SaleLineId == l.SaleLineId);
+            var amount = Pos.Shared.Sales.ReturnPricing.RefundAmount(line.NetLineTotal, line.SoldQty, line.ReturnedQty, l.Qty, 0);
+            return new SaleReturnLine(i + 1, line.SaleLineId, line.ProductId, line.Sku, line.Name, Guid.CreateVersion7(), line.UnitCode,
+                l.Qty, l.Qty, line.NetUnitPrice, amount, l.Condition, Guid.CreateVersion7(), l.Condition == "DAMAGED" ? "RUSAK" : "DISPLAY", []);
+        }).ToList();
+        var number = $"TK01-RT-202611-{StoredReturns.Count + 1:000000}";
+        var ret = new SaleReturnInfo(request.Id, number, source.SaleId, source.SaleNumber, null,
+            new DateTime(2026, 11, 22, 9, 45, 0, DateTimeKind.Utc), "Asia/Jakarta", request.Settlement, lines.Sum(l => l.LineTotal),
+            request.Settlement == "REFUND" ? lines.Sum(l => l.LineTotal) : 0m, request.ReasonId, "Barang rusak", request.Notes,
+            Samples.UserId, "Kasir Satu", null, null, source.CustomerCode, source.CustomerName, null, null, lines,
+            new ReceiptText("TOKO DEV", null, null, null, null, null));
+        StoredReturns[request.Id] = ret;
+        ReturnSources[source.SaleId] = source with
+        {
+            Lines = source.Lines.Select(s => request.Lines.FirstOrDefault(l => l.SaleLineId == s.SaleLineId) is { } r
+                ? s with { ReturnedQty = s.ReturnedQty + r.Qty, ReturnableQty = s.ReturnableQty - r.Qty }
+                : s).ToList(),
+        };
+        return Task.FromResult(ret);
+    }
+
+    public Task<IReadOnlyList<SaleReturnSummary>> GetReturnsAsync(DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        Calls.Add($"returns:{from:yyyy-MM-dd}:{to:yyyy-MM-dd}");
+        return Task.FromResult<IReadOnlyList<SaleReturnSummary>>(StoredReturns.Values
+            .Select(r => new SaleReturnSummary(r.Id, r.Number, r.ReturnedAt, r.SaleNumber, r.CustomerName, r.CreatedByName, r.Settlement,
+                r.Total, r.Notes, r.ExchangeSaleId is not null, r.TimeZone))
+            .OrderByDescending(r => r.Number).ToList());
+    }
+
+    public Task<SaleReturnInfo> GetReturnAsync(Guid returnId, CancellationToken ct = default)
+    {
+        Calls.Add($"return:{returnId}");
+        return Task.FromResult(StoredReturns[returnId]);
+    }
     // ---- tutup shift ------------------------------------------------------------------------------
 
     /// <summary>Returned by GetShiftClosingAsync (default: <see cref="Shifts.Blind"/>).</summary>
@@ -420,6 +491,11 @@ public sealed class FakeDialogs : IDialogService
 
 
 
+
+    /// <summary>Answer of AskText (e.g. the nota number for Tambah Retur); null = cancelled.</summary>
+    public string? TextToAnswer { get; set; }
+
+    public string? AskText(string title, string prompt) { Asked.Add($"text:{title}"); return TextToAnswer; }
     /// <summary>Answer of the reason dialog (null = cancelled); records the reasons offered.</summary>
     public ReasonChoice? ReasonToChoose { get; set; }
     public List<(string Title, IReadOnlyList<ReasonItem> Reasons)> ReasonDialogs { get; } = [];
@@ -608,6 +684,25 @@ public static class SalesRows
         "TUNAI + KREDIT", 62500m, 4m, 2500m, 60000m, 45000m, 45000m, "UNPAID", new DateOnly(2026, 12, 6), "ambil besok", true);
 
     public static SalesListRow Voided(string number = "TK01-SL-202611-000103") => Cash(number) with { Status = "VOID" };
+}
+
+/// <summary>Notas for the return form (sold 22/11/2026 02:15 UTC = 09:15 WIB).</summary>
+public static class Returns
+{
+    public static readonly Guid SaleId = Guid.Parse("01930000-0000-7000-8000-00000000d001");
+    public static readonly Guid AmplopLine = Guid.Parse("01930000-0000-7000-8000-00000000d101");
+    public static readonly Guid KantongLine = Guid.Parse("01930000-0000-7000-8000-00000000d102");
+
+    /// <summary>3 PCS amplop at net 6.750 (20.250) and 2 BUNGKUS kantong at 4.500 (9.000); cash nota within the window.</summary>
+    public static ReturnSource Source(bool credit = false, bool withinWindow = true, decimal amplopReturned = 0m) => new(
+        SaleId, "TK01-SL-202611-000123", new DateTime(2026, 11, 22, 2, 15, 0, DateTimeKind.Utc), "Asia/Jakarta", new DateOnly(2026, 11, 22),
+        credit ? "C000001" : null, credit ? "Budi Pelanggan" : null, "Kasir Satu", 29250m, credit ? 20000m : 0m, credit ? 20000m : 0m,
+        false, 7, withinWindow, 0,
+        [
+            new ReturnSourceLine(AmplopLine, 1, Samples.AmplopId, "13589", "2023_amplop lebaran karakter", "PCS", 3m, amplopReturned,
+                3m - amplopReturned, 6750m, 20250m, false),
+            new ReturnSourceLine(KantongLine, 2, Samples.KantongId, "5113", "2_HD kantong hitam 3kg", "BUNGKUS", 2m, 0m, 2m, 4500m, 9000m, false),
+        ]);
 }
 public static class Receipts
 {
