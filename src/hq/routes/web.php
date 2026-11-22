@@ -9,7 +9,11 @@ use App\Http\Controllers\MasterData\ProductController;
 use App\Http\Controllers\MasterData\ProductUnitController;
 use App\Http\Controllers\MasterData\SupplierController;
 use App\Http\Controllers\MasterData\UnitController;
+use App\Http\Controllers\Settings\ExpenseTypeController;
+use App\Http\Controllers\Settings\PaymentMethodController;
+use App\Http\Controllers\Settings\ReasonController;
 use App\Http\Controllers\Settings\RoleController;
+use App\Http\Controllers\Settings\SettingController;
 use App\Http\Controllers\Settings\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -94,6 +98,27 @@ Route::middleware(['auth', 'hq'])->group(function () {
             Route::post('roles', [RoleController::class, 'store']);
             Route::put('roles/{id}', [RoleController::class, 'update']);
             Route::delete('roles/{id}', [RoleController::class, 'destroy']);
+        });
+
+        Route::middleware('permission:settings.manage')->group(function () {
+            Route::get('settings', [SettingController::class, 'index'])->name('pengaturan.settings');
+            Route::put('settings', [SettingController::class, 'update']);
+            Route::get('settings/receipt-preview', [SettingController::class, 'receiptPreview']);
+
+            Route::get('payment-methods', [PaymentMethodController::class, 'index'])->name('pengaturan.payment-methods');
+            Route::post('payment-methods', [PaymentMethodController::class, 'store']);
+            Route::post('payment-methods/return', [PaymentMethodController::class, 'storeReturn']);
+            Route::put('payment-methods/{id}', [PaymentMethodController::class, 'update']);
+
+            Route::get('reasons', [ReasonController::class, 'index'])->name('pengaturan.reasons');
+            Route::post('reasons', [ReasonController::class, 'store']);
+            Route::put('reasons/{id}', [ReasonController::class, 'update']);
+            Route::delete('reasons/{id}', [ReasonController::class, 'destroy']);
+
+            Route::get('expense-types', [ExpenseTypeController::class, 'index'])->name('pengaturan.expense-types');
+            Route::post('expense-types', [ExpenseTypeController::class, 'store']);
+            Route::put('expense-types/{id}', [ExpenseTypeController::class, 'update']);
+            Route::delete('expense-types/{id}', [ExpenseTypeController::class, 'destroy']);
         });
     });
 

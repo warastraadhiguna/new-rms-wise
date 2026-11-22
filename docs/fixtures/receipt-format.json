@@ -1,0 +1,243 @@
+{
+  "about": "Shared receipt fixture: Pos.Shared ReceiptFormatter (C#, Pos.Tests) and the HQ preview (PHP, tests/Unit/ReceiptFormatterTest) must both produce `expected` from `data`. Regenerate `expected` from C# with POS_UPDATE_FIXTURES=1 dotnet test --filter ReceiptFixture.",
+  "cases": [
+    {
+      "name": "cash with discount percent, rounding and a long name",
+      "width": 48,
+      "reprint": false,
+      "data": {
+        "header": [
+          "TOKO MAJU JAYA",
+          "Jl. Merdeka No. 10",
+          "Bandung",
+          "Telp. 022-1234567"
+        ],
+        "footer": [
+          "Terimakasih Atas Kunjungannya",
+          "Barang yang sudah dibeli tidak dapat ditukar"
+        ],
+        "number": "TK01-SL-202611-000123",
+        "sold_at_local": "2026-11-22 14:05",
+        "cashier": "Kasir Satu",
+        "customer": null,
+        "items": [
+          {
+            "name": "Teh Botol Sosro 450 ml",
+            "qty": "3",
+            "unit": "PCS",
+            "unit_price": "4000",
+            "line_total": "12000"
+          },
+          {
+            "name": "Minyak Goreng Bimoli Spesial Pouch Isi Ulang Dua Liter Kemasan Hemat Keluarga",
+            "qty": "1",
+            "unit": "PCS",
+            "unit_price": "38500",
+            "line_total": "38500"
+          },
+          {
+            "name": "Gula Pasir",
+            "qty": "0.25",
+            "unit": "KG",
+            "unit_price": "16000",
+            "line_total": "4000"
+          },
+          {
+            "name": "Indomie Goreng",
+            "qty": "2",
+            "unit": "DUS",
+            "unit_price": "1234567.5",
+            "line_total": "2469135"
+          }
+        ],
+        "subtotal": "2523635",
+        "discount_amount": "252363.5",
+        "discount_pct": "10",
+        "rounding": "28.5",
+        "total": "2271300",
+        "payments": [
+          {
+            "method": "TUNAI",
+            "is_cash": true,
+            "is_credit": false,
+            "amount": "2271300",
+            "tendered": "2300000",
+            "change": "28700"
+          }
+        ],
+        "due_date": null
+      },
+      "expected": [
+        "                 TOKO MAJU JAYA",
+        "               Jl. Merdeka No. 10",
+        "                    Bandung",
+        "               Telp. 022-1234567",
+        "------------------------------------------------",
+        "No     : TK01-SL-202611-000123",
+        "Tanggal: 22/11/2026 14:05",
+        "Kasir  : Kasir Satu",
+        "------------------------------------------------",
+        "Teh Botol Sosro 450 ml",
+        "  3 PCS x 4.000                           12.000",
+        "Minyak Goreng Bimoli Spesial Pouch Isi Ulang Dua",
+        "Liter Kemasan Hemat Keluarga",
+        "  1 PCS x 38.500                          38.500",
+        "Gula Pasir",
+        "  0,25 KG x 16.000                         4.000",
+        "Indomie Goreng",
+        "  2 DUS x 1.234.567,5                  2.469.135",
+        "------------------------------------------------",
+        "SubTotal                               2.523.635",
+        "Diskon 10%                             252.363,5",
+        "Pembulatan                                  28,5",
+        "Grand Total                            2.271.300",
+        "Cara Bayar                                 TUNAI",
+        "Bayar                                  2.300.000",
+        "Kembali                                   28.700",
+        "------------------------------------------------",
+        "         Terimakasih Atas Kunjungannya",
+        "  Barang yang sudah dibeli tidak dapat ditukar"
+      ]
+    },
+    {
+      "name": "credit sale with down payment, member and reprint",
+      "width": 48,
+      "reprint": true,
+      "data": {
+        "header": [
+          "TOKO MAJU JAYA"
+        ],
+        "footer": [
+          "Terimakasih Atas Kunjungannya"
+        ],
+        "number": "TK01-SL-202611-000124",
+        "sold_at_local": "2026-11-22 09:30",
+        "cashier": "Kasir Dua",
+        "customer": "C000012 - Ibu Sari",
+        "items": [
+          {
+            "name": "Beras Premium 5 kg",
+            "qty": "2",
+            "unit": "SAK",
+            "unit_price": "75000",
+            "line_total": "150000"
+          }
+        ],
+        "subtotal": "150000",
+        "discount_amount": "5000",
+        "discount_pct": null,
+        "rounding": "0",
+        "total": "145000",
+        "payments": [
+          {
+            "method": "TUNAI",
+            "is_cash": true,
+            "is_credit": false,
+            "amount": "45000",
+            "tendered": "45000",
+            "change": "0"
+          },
+          {
+            "method": "KREDIT",
+            "is_cash": false,
+            "is_credit": true,
+            "amount": "100000",
+            "tendered": null,
+            "change": null
+          }
+        ],
+        "due_date": "2026-12-22"
+      },
+      "expected": [
+        "                 TOKO MAJU JAYA",
+        "                  CETAK ULANG",
+        "------------------------------------------------",
+        "No     : TK01-SL-202611-000124",
+        "Tanggal: 22/11/2026 09:30",
+        "Kasir  : Kasir Dua",
+        "Member : C000012 - Ibu Sari",
+        "------------------------------------------------",
+        "Beras Premium 5 kg",
+        "  2 SAK x 75.000                         150.000",
+        "------------------------------------------------",
+        "SubTotal                                 150.000",
+        "Potongan                                   5.000",
+        "Grand Total                              145.000",
+        "Cara Bayar                                KREDIT",
+        "Uang Muka                                 45.000",
+        "Sisa Piutang                             100.000",
+        "Jatuh Tempo                           22/12/2026",
+        "------------------------------------------------",
+        "         Terimakasih Atas Kunjungannya"
+      ]
+    },
+    {
+      "name": "58 mm paper, non-cash split, negative rounding",
+      "width": 32,
+      "reprint": false,
+      "data": {
+        "header": [
+          "TOKO DENGAN NAMA YANG SANGAT PANJANG SEKALI"
+        ],
+        "footer": [],
+        "number": "TK01-SL-202611-000125",
+        "sold_at_local": "2026-01-05 07:00",
+        "cashier": "Kasir Dengan Nama Panjang Sekali Lho",
+        "customer": "",
+        "items": [
+          {
+            "name": "Kopi",
+            "qty": "1000",
+            "unit": "PCS",
+            "unit_price": "999999.9999",
+            "line_total": "999999999.9"
+          }
+        ],
+        "subtotal": "999999999.9",
+        "discount_amount": "0",
+        "discount_pct": null,
+        "rounding": "-99.9",
+        "total": "999999900",
+        "payments": [
+          {
+            "method": "DEBIT",
+            "is_cash": false,
+            "is_credit": false,
+            "amount": "500000000",
+            "tendered": null,
+            "change": null
+          },
+          {
+            "method": "QRIS",
+            "is_cash": false,
+            "is_credit": false,
+            "amount": "499999900",
+            "tendered": null,
+            "change": null
+          }
+        ],
+        "due_date": null
+      },
+      "expected": [
+        "  TOKO DENGAN NAMA YANG SANGAT",
+        "         PANJANG SEKALI",
+        "--------------------------------",
+        "No     : TK01-SL-202611-000125",
+        "Tanggal: 05/01/2026 07:00",
+        "Kasir  : Kasir Dengan Nama Panja",
+        "--------------------------------",
+        "Kopi",
+        "  1.000 PCS x 999.999,9999",
+        "                   999.999.999,9",
+        "--------------------------------",
+        "SubTotal           999.999.999,9",
+        "Pembulatan                 -99,9",
+        "Grand Total          999.999.900",
+        "Cara Bayar          DEBIT + QRIS",
+        "Bayar                999.999.900",
+        "Kembali                        0",
+        "--------------------------------"
+      ]
+    }
+  ]
+}

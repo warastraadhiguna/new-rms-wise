@@ -1,6 +1,13 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import type { LucideIcon } from 'lucide-react';
-import { ShieldCheck, Users } from 'lucide-react';
+import {
+    CreditCard,
+    MessageSquareText,
+    Receipt,
+    ShieldCheck,
+    SlidersHorizontal,
+    Users,
+} from 'lucide-react';
 import { PageHeader } from '@/components/master-data';
 import {
     Card,
@@ -32,6 +39,35 @@ export const settingsSections: Section[] = [
         href: '/pengaturan/roles',
         icon: ShieldCheck,
         permission: 'users.manage',
+    },
+    {
+        title: 'Pengaturan Umum',
+        description:
+            'Struk, penjualan, stok, dan shift (global atau per cabang).',
+        href: '/pengaturan/settings',
+        icon: SlidersHorizontal,
+        permission: 'settings.manage',
+    },
+    {
+        title: 'Metode Bayar',
+        description: 'Tunai, kredit, non-tunai, dan RETUR.',
+        href: '/pengaturan/payment-methods',
+        icon: CreditCard,
+        permission: 'settings.manage',
+    },
+    {
+        title: 'Alasan',
+        description: 'Alasan void, retur, dan penyesuaian stok.',
+        href: '/pengaturan/reasons',
+        icon: MessageSquareText,
+        permission: 'settings.manage',
+    },
+    {
+        title: 'Jenis Biaya',
+        description: 'Jenis pengeluaran kas toko.',
+        href: '/pengaturan/expense-types',
+        icon: Receipt,
+        permission: 'settings.manage',
     },
 ];
 
