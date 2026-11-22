@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MasterData\BrandController;
 use App\Http\Controllers\MasterData\CategoryController;
 use App\Http\Controllers\MasterData\ContactController;
@@ -28,7 +29,7 @@ Route::post('logout', [LoginController::class, 'destroy'])->middleware('auth')->
 
 // The HQ web: logged in, active, with permission hq.access (re-checked on every request).
 Route::middleware(['auth', 'hq'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+    Route::get('dashboard', DashboardController::class)->name('dashboard');
 
     // Master data: reading needs master.view (or master.edit), every change master.edit.
     Route::prefix('master-data')->middleware('permission:master.view,master.edit')->group(function () {

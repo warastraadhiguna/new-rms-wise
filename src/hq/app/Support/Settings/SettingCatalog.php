@@ -61,6 +61,10 @@ final class SettingCatalog
                 self::item('shift.blind_count', 'Blind count saat tutup shift', self::BOOLEAN, default: true,
                     help: 'Kasir mengisi kas fisik dulu sebelum angka sistem ditampilkan.'),
             ]],
+            ['key' => 'sync', 'label' => 'Sinkronisasi', 'items' => [
+                self::item('sync.alert_minutes', 'Batas menit tanpa sinkron', self::INTEGER, min: 1, max: 1440, default: 15,
+                    help: 'Lewat batas ini status sinkron di kasir menjadi merah; di dashboard pusat kuning, dan merah setelah dua kali batas.'),
+            ]],
         ];
     }
 
