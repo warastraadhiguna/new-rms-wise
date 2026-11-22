@@ -34,7 +34,7 @@ src/node/              C# solution (Pos.slnx)
                        git-ignored testsettings.Local.json; skipped when not configured)
   Pos.Desktop.Tests/   WPF client: ViewModels, HTTP client with a fake server, and UI tests
                        that drive real controls on an STA thread
-src/hq/                Laravel app (later)
+src/hq/                HQ web: Laravel 13 + Inertia + React + TypeScript (see "HQ (Laravel)" below)
 src/android/           Kotlin app (later)
 ```
 
@@ -105,10 +105,47 @@ src/android/           Kotlin app (later)
 - Node Service: minimal APIs grouped by feature; MySqlConnector + EF Core 9 (Pomelo 9) or Dapper.
 - Async all the way for I/O. Pass `CancellationToken`.
 
+## HQ (Laravel) — src/hq
+- Laravel 13 + official React starter kit (Inertia + React + TypeScript), Pest 4. Production runs **PHP 8.4**
+  (the laptop has 8.5): `composer.json` keeps `config.platform.php = 8.4.0` and `require.php = ^8.4`.
+  Never use PHP 8.5-only features (pipe operator `|>`, etc.).
+- MySQL 8.4 (server port 3307). Local WAMP: `pos_hq_dev` (dev) and `pos_hq_test` (tests), user `pos_app`.
+  `.env` is git-ignored; `.env.example` lists every key.
+- **Schema:** the domain schema comes ONLY from `database/migrations/*.sql` via `php artisan pos:migrate`
+  (`App\Support\Schema\SqlMigrator`): name order, statement by statement, UTC session, journal `schema_versions`
+  with DbUp's exact table and script names — one database can be migrated from the node or HQ without repeats.
+  Laravel migrations (`src/hq/database/migrations`) are for framework tables only (sessions, cache, jobs);
+  none may touch a domain table (a test checks this). New domain tables/columns = a new numbered SQL file.
+- UTC everywhere (app timezone and MySQL session `+00:00`); screens convert to the branch timezone
+  (`config('pos.display_timezone')`, default Asia/Jakarta). InnoDB (WAMP defaults to MyISAM).
+- Money/qty never float in PHP: decimal strings (`'decimal:4'` casts) and `App\Support\Decimal` (brick/math),
+  which rejects floats.
+- UI text in Indonesian; code, tables, columns, routes' code in English (menu paths may be Indonesian words).
+- **Login:** our `users` table (UUID string key, `username`, bcrypt `$2y$` `password_hash` shared with the nodes),
+  `App\Auth\HqLogin`: same throttle as the node (`login_throttle`, 5 failures = 5 minutes, also for unknown names),
+  one message for every failure ("Username atau password salah."). No registration, email verification,
+  password reset, 2FA or passkeys. Inactive/deleted users are refused and lose their session on the next request.
+- **Permissions:** `roles.permissions` + `user_roles` like the node (`node_id` NULL or the HQ node, `"*"` = all).
+  Every HQ page needs `hq.access` (middleware `hq`, re-checked per request). Per page: middleware
+  `permission:a.b[,c.d]` or gates (`can:a.b`, `Gate::allows`) — every ability is a permission.
+- **Master data writes go ONLY through `App\Support\MasterData\MasterDataWriter`** (`create`/`update`/`delete`):
+  one transaction, `master_version.last_version + 1` under `SELECT ... FOR UPDATE`, the row's `version` set,
+  UUID v7 ids, soft delete (`deleted_at` + new version), `audit_logs` (user, table, id, action, old/new, IP).
+  Never `Model::save()` / `DB::table()->update()` on master data in application code.
+- Dev data: `php artisan pos:seed-dev` (entity E01, branch B01, nodes HQ and TK01, role OWNER `"*"`,
+  user `admin` / `admin123`); refuses databases not named `*_dev` / `*_test`.
+- Run: `cd src/hq && composer install && npm install && cp .env.example .env && php artisan key:generate`,
+  then `php artisan pos:migrate && php artisan migrate && php artisan pos:seed-dev`, `composer dev` (or `npm run build`
+  and `php artisan serve`).
+- Test: `php artisan test` (rebuilds `pos_hq_test` once per run: drop all, `pos:migrate`, `migrate`; tests use their
+  own unique users, never the seeded ones). Before committing: `vendor/bin/pint`, `vendor/bin/phpstan analyse`
+  (level 7, no ignores), `npm run check`, `npm run types:check`, `npm run build` — all clean.
+
 ## Definition of done (every task)
 1. Tests written first for the logic in `Pos.Shared` (xUnit), including edge cases
    (zero, negative stock, rounding, unit conversion, multiple expiry dates).
 2. `dotnet build src/node/Pos.slnx` passes with no warnings you introduced.
-3. `dotnet test src/node/Pos.slnx` passes.
+3. `dotnet test src/node/Pos.slnx` passes. HQ tasks: `php artisan test`, Pint, PHPStan and `npm run build` in `src/hq`
+   pass (see "HQ (Laravel)").
 4. Short report to the user (in Indonesian): what changed, how to try it, anything left open.
 5. Suggest a commit message in English. Do not commit or push unless asked.

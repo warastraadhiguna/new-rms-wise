@@ -1,14 +1,29 @@
 <?php
 
+use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
 
-// 11a: skeleton only. Login (POST), permissions and the menu pages come with 11b.
 Route::redirect('/', '/dashboard')->name('home');
 
 Route::middleware('guest')->group(function () {
-    Route::inertia('login', 'auth/login')->name('login');
+    Route::get('login', [LoginController::class, 'create'])->name('login');
+    Route::post('login', [LoginController::class, 'store'])->name('login.store');
 });
 
-Route::middleware('auth')->group(function () {
+Route::post('logout', [LoginController::class, 'destroy'])->middleware('auth')->name('logout');
+
+// The HQ web: logged in, active, with permission hq.access (re-checked on every request).
+Route::middleware(['auth', 'hq'])->group(function () {
     Route::inertia('dashboard', 'dashboard')->name('dashboard');
+
+    // Menu pages; their content comes with later tasks.
+    foreach ([
+        'master-data' => 'Master Data',
+        'pembelian' => 'Pembelian',
+        'stok' => 'Stok',
+        'laporan' => 'Laporan',
+        'pengaturan' => 'Pengaturan',
+    ] as $path => $title) {
+        Route::inertia($path, 'placeholder', ['title' => $title, 'href' => "/{$path}"])->name($path);
+    }
 });
